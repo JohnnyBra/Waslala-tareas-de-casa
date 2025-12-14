@@ -6,24 +6,27 @@ Una aplicación gamificada para la gestión de tareas del hogar, diseñada para 
 
 - Ubuntu Server (o Desktop)
 - Node.js (v18+)
-- NPM
+- NPM (incluido con Node.js)
 - Cuenta de Cloudflare (para el túnel)
 
 ## Instalación Desde Cero
 
 ### 1. Preparar el Entorno
 
-Accede a tu servidor Ubuntu y actualiza los paquetes:
+Accede a tu servidor Ubuntu. Vamos a instalar Node.js versión 20.x desde el repositorio oficial (NodeSource) para evitar conflictos y tener la versión más reciente.
 
 ```bash
+# Actualizar sistema
 sudo apt update && sudo apt upgrade -y
-sudo apt install nodejs npm -y
-```
 
-Verifica la instalación:
-```bash
-node -v
-npm -v
+# Instalar curl si no lo tienes
+sudo apt install curl -y
+
+# Añadir el repositorio de Node.js 20.x
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+
+# Instalar Node.js (esto ya incluye npm, NO instalar npm por separado)
+sudo apt install -y nodejs
 ```
 
 ### 2. Instalar el código
@@ -67,7 +70,16 @@ npx vite build
 
 Esto creará una carpeta `dist/` con los archivos estáticos.
 
-### 5. Ejecución Persistente con PM2
+### 5. IMPORTANTE: Configurar Firewall
+
+Para poder acceder desde otros dispositivos (y para que Cloudflare Tunnel pueda conectar si no usa localhost), debes abrir el puerto 3010:
+
+```bash
+sudo ufw allow 3010/tcp
+sudo ufw reload
+```
+
+### 6. Ejecución Persistente con PM2
 
 PM2 permite mantener la aplicación corriendo en segundo plano y reiniciar si hay fallos o reinicios del servidor.
 
@@ -89,9 +101,9 @@ pm2 save
 pm2 startup
 ```
 
-La app ahora está corriendo en `http://localhost:3010`.
+La app ahora está corriendo en `http://tu-ip-local:3010`.
 
-### 6. Tunelado con Cloudflare (Cloudflared)
+### 7. Tunelado con Cloudflare (Cloudflared)
 
 Para acceder desde fuera de casa de forma segura sin abrir puertos en el router.
 
@@ -111,8 +123,11 @@ Para acceder desde fuera de casa de forma segura sin abrir puertos en el router.
    cloudflared tunnel create supertareas-tunnel
    ```
 
-4. Configura el túnel para apuntar a tu puerto 3010. Crea/edita `~/.cloudflared/config.yml` (o configura vía Dashboard Zero Trust de Cloudflare):
+4. Configura el túnel para apuntar a tu puerto 3010. Crea/edita `~/.cloudflared/config.yml`:
    ```yaml
+   tunnel: <Tunnel-UUID>
+   credentials-file: /home/<tu-usuario>/.cloudflared/<Tunnel-UUID>.json
+   
    ingress:
      - hostname: tareas.tudominio.com
        service: http://localhost:3010
@@ -123,8 +138,6 @@ Para acceder desde fuera de casa de forma segura sin abrir puertos en el router.
    ```bash
    cloudflared tunnel run supertareas-tunnel
    ```
-
-¡Listo! Ahora puedes acceder a la app desde cualquier móvil o tablet usando tu dominio.
 
 ## Usuarios por Defecto
 

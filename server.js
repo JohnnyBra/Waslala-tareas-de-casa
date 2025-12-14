@@ -8,8 +8,6 @@ const app = express();
 const PORT = 3010;
 
 // Serve static files from the build directory (must run 'npm run build' first)
-// In a dev environment without build, you might use 'vite preview' or similar, 
-// but for production deployment via PM2, serving static files is standard.
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Handle React Routing, return all requests to React app
@@ -17,7 +15,9 @@ app.get('*', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
+// Explicitly bind to '0.0.0.0' to listen on all network interfaces (LAN/WAN), not just localhost
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SuperTareas Server running on port ${PORT}`);
-  console.log(`👉 Local: http://localhost:${PORT}`);
+  console.log(`👉 Access via LAN IP: http://<your-server-ip>:${PORT}`);
+  console.log(`👉 Access via Localhost: http://localhost:${PORT}`);
 });
