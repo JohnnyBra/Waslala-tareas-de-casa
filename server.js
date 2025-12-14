@@ -10,7 +10,7 @@ const PORT = 3010;
 
 app.use(express.static(path.join(__dirname, 'dist')));
 
-app.get('*', function (req, res) {
+app.get('*splat', function (req, res) {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
