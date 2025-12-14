@@ -35,27 +35,96 @@ const KEYS = {
   MESSAGES: 'st_messages'
 };
 
+// API Base URL (relative since we serve from same origin in production)
+// In development, you might need to change this if running on different ports
+const API_BASE = '/api';
+
 // Helper to get today's date string YYYY-MM-DD
 export const getTodayString = () => new Date().toISOString().split('T')[0];
 
 export const DataService = {
-  // Initialization
-  init: () => {
-    if (!localStorage.getItem(KEYS.USERS)) {
-      localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+  // Initialization: Load from server and populate localStorage
+  init: async () => {
+    try {
+        const response = await fetch(`${API_BASE}/data`);
+        const serverData = await response.json();
+
+        if (serverData && Object.keys(serverData).length > 0) {
+            // Load server data into localStorage
+            if(serverData.users) localStorage.setItem(KEYS.USERS, JSON.stringify(serverData.users));
+            if(serverData.tasks) localStorage.setItem(KEYS.TASKS, JSON.stringify(serverData.tasks));
+            if(serverData.completions) localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(serverData.completions));
+            if(serverData.extraPoints) localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(serverData.extraPoints));
+            if(serverData.messages) localStorage.setItem(KEYS.MESSAGES, JSON.stringify(serverData.messages));
+        } else {
+            // If server is empty, use initial data if local is also empty
+            if (!localStorage.getItem(KEYS.USERS)) {
+                localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+            }
+            if (!localStorage.getItem(KEYS.TASKS)) {
+                localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
+            }
+            if (!localStorage.getItem(KEYS.COMPLETIONS)) {
+                localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify([]));
+            }
+            if (!localStorage.getItem(KEYS.EXTRA_POINTS)) {
+                localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify([]));
+            }
+            if (!localStorage.getItem(KEYS.MESSAGES)) {
+                localStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
+            }
+            // Save initial data to server
+            DataService.syncToServer();
+        }
+    } catch (e) {
+        console.error("Failed to load data from server, falling back to local storage", e);
+        // Fallback init
+        if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
+        if (!localStorage.getItem(KEYS.TASKS)) localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
     }
-    if (!localStorage.getItem(KEYS.TASKS)) {
-      localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-    }
-    if (!localStorage.getItem(KEYS.COMPLETIONS)) {
-      localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(KEYS.EXTRA_POINTS)) {
-      localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify([]));
-    }
-    if (!localStorage.getItem(KEYS.MESSAGES)) {
-        localStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
-    }
+  },
+
+  // Sync current localStorage state to server
+  syncToServer: async () => {
+      const data = {
+          users: JSON.parse(localStorage.getItem(KEYS.USERS) || '[]'),
+          tasks: JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]'),
+          completions: JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]'),
+          extraPoints: JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]'),
+          messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]')
+      };
+
+      try {
+          await fetch(`${API_BASE}/data`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+          });
+      } catch (e) {
+          console.error("Failed to sync to server", e);
+      }
+  },
+
+  // Upload Image
+  uploadImage: async (file: File): Promise<string> => {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      try {
+          const response = await fetch(`${API_BASE}/upload`, {
+              method: 'POST',
+              body: formData
+          });
+          if(response.ok) {
+              const data = await response.json();
+              return data.url;
+          } else {
+              throw new Error('Upload failed');
+          }
+      } catch (e) {
+          console.error("Error uploading image", e);
+          throw e;
+      }
   },
 
   // Users
@@ -69,6 +138,7 @@ export const DataService = {
     if (index !== -1) {
       users[index] = updatedUser;
       localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      DataService.syncToServer();
     }
   },
 
@@ -86,11 +156,13 @@ export const DataService = {
       tasks.push(task);
     }
     localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
+    DataService.syncToServer();
   },
 
   deleteTask: (taskId: string) => {
     const tasks = DataService.getTasks().filter(t => t.id !== taskId);
     localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
+    DataService.syncToServer();
   },
 
   // Completions
@@ -118,12 +190,14 @@ export const DataService = {
       completions.push(newCompletion);
     }
     localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(completions));
+    DataService.syncToServer();
   },
 
   removeCompletion: (taskId: string, userId: string, date: string) => {
     let completions = DataService.getCompletions();
     const newCompletions = completions.filter(c => !(c.taskId === taskId && c.userId === userId && c.date === date));
     localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(newCompletions));
+    DataService.syncToServer();
   },
 
   // Extra Points
@@ -142,6 +216,7 @@ export const DataService = {
     };
     extras.push(newEntry);
     localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(extras));
+    DataService.syncToServer();
   },
 
   // Messages (Taunts)
@@ -162,6 +237,7 @@ export const DataService = {
       };
       allMessages.push(newMsg);
       localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
+      DataService.syncToServer();
   },
 
   markMessageRead: (msgId: string) => {
@@ -170,6 +246,7 @@ export const DataService = {
       if(msg) {
           msg.read = true;
           localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
+          DataService.syncToServer();
       }
   },
 

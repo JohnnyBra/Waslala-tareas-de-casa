@@ -135,41 +135,16 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         onUserUpdate({ ...currentUser, avatar: newAvatar });
     };
 
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onload = () => {
-                    // Resize image
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    const maxSize = 150;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > maxSize) {
-                            height *= maxSize / width;
-                            width = maxSize;
-                        }
-                    } else {
-                        if (height > maxSize) {
-                            width *= maxSize / height;
-                            height = maxSize;
-                        }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    
-                    const base64 = canvas.toDataURL('image/jpeg', 0.8);
-                    onUserUpdate({ ...currentUser, avatar: base64 }); 
-                };
-                img.src = e.target?.result as string;
-            };
-            reader.readAsDataURL(file);
+            try {
+                const imageUrl = await DataService.uploadImage(file);
+                onUserUpdate({ ...currentUser, avatar: imageUrl });
+            } catch (error) {
+                alert('Error al subir la imagen');
+                console.error(error);
+            }
         }
     };
 
@@ -215,7 +190,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gray-100 border overflow-hidden`}>
-                                     {kid.avatar.startsWith('data:') ? (
+                                     {kid.avatar.startsWith('data:') || kid.avatar.startsWith('/uploads/') ? (
                                         <img src={kid.avatar} className="w-full h-full object-cover"/>
                                      ) : (
                                          <span className="text-lg">{kid.avatar}</span>
@@ -413,7 +388,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                             : 'bg-white text-gray-500 border-gray-200'
                                         }`}
                                     >
-                                        {kid.avatar.startsWith('data:') ? (
+                                        {kid.avatar.startsWith('data:') || kid.avatar.startsWith('/uploads/') ? (
                                             <img src={kid.avatar} className="w-5 h-5 rounded-full object-cover"/>
                                         ) : kid.avatar}
                                         {kid.name}
@@ -537,7 +512,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                 <Icons.Camera size={20} />
                                 Subir Foto
                             </button>
-                            {currentUser.avatar.startsWith('data:') && (
+                            {(currentUser.avatar.startsWith('data:') || currentUser.avatar.startsWith('/uploads/')) && (
                                 <button 
                                     onClick={() => handleAvatarSelect('🧑')}
                                     className="bg-gray-200 text-gray-600 px-3 py-2 rounded-xl hover:bg-red-100 hover:text-red-500 transition-colors"
