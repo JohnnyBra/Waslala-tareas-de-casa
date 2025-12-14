@@ -17,6 +17,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [extraPoints, setExtraPoints] = useState(DataService.getExtraPoints());
   
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showPointsModal, setShowPointsModal] = useState<string | null>(null); // userId or null
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [view, setView] = useState<'status' | 'manage'>('status');
@@ -56,8 +57,8 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     e.preventDefault();
     if (!newTaskTitle || newTaskAssignees.length === 0) return;
 
-    const newTask: Task = {
-        id: Date.now().toString(),
+    const taskToSave: Task = {
+        id: editingTaskId || Date.now().toString(),
         title: newTaskTitle,
         points: Number(newTaskPoints),
         icon: newTaskIcon,
@@ -65,10 +66,20 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         recurrence: newTaskRecurrence
     };
 
-    DataService.saveTask(newTask);
+    DataService.saveTask(taskToSave);
     setShowAddModal(false);
     resetForm();
     loadData();
+  };
+
+  const handleEditClick = (task: Task) => {
+      setEditingTaskId(task.id);
+      setNewTaskTitle(task.title);
+      setNewTaskPoints(task.points);
+      setNewTaskIcon(task.icon);
+      setNewTaskAssignees(task.assignedTo);
+      setNewTaskRecurrence(task.recurrence);
+      setShowAddModal(true);
   };
 
   const handleDeleteTask = (id: string) => {
@@ -163,6 +174,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
 
   const resetForm = () => {
+      setEditingTaskId(null);
       setNewTaskTitle('');
       setNewTaskPoints(10);
       setNewTaskAssignees([]);
@@ -181,7 +193,9 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       );
   };
 
-  const days = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  // 0=Sunday, 1=Monday... but we want to display starting from Monday
+  const dayLabels = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
+  const displayDays = [1, 2, 3, 4, 5, 6, 0]; // Indices in order: Mon, Tue... Sun
 
   const renderStatus = () => (
     <div className="space-y-6">
@@ -284,9 +298,14 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                               </div>
                           </div>
                       </div>
-                      <button onClick={() => handleDeleteTask(task.id)} className="text-red-400 hover:text-red-600 p-2">
-                          <Icons.Trash2 size={20} />
-                      </button>
+                      <div className="flex gap-2">
+                          <button onClick={() => handleEditClick(task)} className="text-blue-400 hover:text-blue-600 p-2">
+                              <Icons.Edit size={20} />
+                          </button>
+                          <button onClick={() => handleDeleteTask(task.id)} className="text-red-400 hover:text-red-600 p-2">
+                              <Icons.Trash2 size={20} />
+                          </button>
+                      </div>
                   </div>
               ))}
           </div>
@@ -328,7 +347,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         {showAddModal && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                    <h2 className="text-2xl font-bold mb-4">Nueva Tarea</h2>
+                    <h2 className="text-2xl font-bold mb-4">{editingTaskId ? 'Editar Tarea' : 'Nueva Tarea'}</h2>
                     <form onSubmit={handleCreateTask} className="space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-gray-700 mb-1">Título</label>
@@ -387,18 +406,18 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                         <div>
                              <label className="block text-sm font-bold text-gray-700 mb-2">Días:</label>
                              <div className="flex justify-between bg-gray-100 p-2 rounded-xl">
-                                 {days.map((d, i) => (
+                                 {displayDays.map((dayIndex) => (
                                      <button
-                                        key={i}
+                                        key={dayIndex}
                                         type="button"
-                                        onClick={() => toggleRecurrence(i)}
+                                        onClick={() => toggleRecurrence(dayIndex)}
                                         className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${
-                                            newTaskRecurrence.includes(i)
+                                            newTaskRecurrence.includes(dayIndex)
                                             ? 'bg-brand-green text-white shadow-md'
                                             : 'text-gray-400 hover:bg-gray-200'
                                         }`}
                                      >
-                                         {d}
+                                         {dayLabels[dayIndex]}
                                      </button>
                                  ))}
                              </div>
