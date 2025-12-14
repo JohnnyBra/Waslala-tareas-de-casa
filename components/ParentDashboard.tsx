@@ -9,6 +9,7 @@ interface Props {
 }
 
 const AVATAR_OPTIONS = ['👨🏻', '👩🏻', '👴', '👵', '🧑', '👧', '👦', '👶', '🐶', '🐱'];
+const TASK_ICONS = ['🧹', '🛏️', '🧸', '📚', '🍽️', '🚿', '🦷', '👗', '🗑️', '🪴', '🐕', '🐈', '👕', '🧺', '🧽', '🚶', '🎒', '🧩', '🎨', '🎷'];
 
 const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -371,12 +372,30 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Icono (Emoji)</label>
-                                <input 
-                                    value={newTaskIcon}
-                                    onChange={e => setNewTaskIcon(e.target.value)}
-                                    className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none text-center" 
-                                />
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Icono</label>
+                                <div className="h-[52px] flex items-center justify-center border-2 border-gray-200 rounded-xl bg-gray-50 text-2xl">
+                                    {newTaskIcon}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Seleccionar Icono:</label>
+                            <div className="grid grid-cols-5 gap-2 bg-gray-50 p-3 rounded-xl max-h-40 overflow-y-auto">
+                                {TASK_ICONS.map(icon => (
+                                    <button
+                                        key={icon}
+                                        type="button"
+                                        onClick={() => setNewTaskIcon(icon)}
+                                        className={`text-2xl p-2 rounded-lg transition-all ${
+                                            newTaskIcon === icon
+                                            ? 'bg-brand-blue text-white shadow-md transform scale-110'
+                                            : 'bg-white hover:bg-gray-200 text-gray-700'
+                                        }`}
+                                    >
+                                        {icon}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
