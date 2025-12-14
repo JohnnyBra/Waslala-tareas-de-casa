@@ -8,13 +8,21 @@ import { DataService } from './services/dataService';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check session logic
-    const storedUser = sessionStorage.getItem('st_session_user');
-    if (storedUser) {
-        setCurrentUser(JSON.parse(storedUser));
-    }
+    const initData = async () => {
+        await DataService.init();
+
+        // Check session logic
+        const storedUser = sessionStorage.getItem('st_session_user');
+        if (storedUser) {
+            setCurrentUser(JSON.parse(storedUser));
+        }
+        setLoading(false);
+    };
+
+    initData();
   }, []);
 
   const handleLogin = (user: User) => {
@@ -32,6 +40,14 @@ const App: React.FC = () => {
     setCurrentUser(updatedUser);
     sessionStorage.setItem('st_session_user', JSON.stringify(updatedUser));
   };
+
+  if (loading) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-gray-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-blue"></div>
+          </div>
+      );
+  }
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} />;
