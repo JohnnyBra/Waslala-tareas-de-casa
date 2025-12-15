@@ -29,8 +29,15 @@ export interface ShopTransaction {
   timestamp: number;
 }
 
+export interface Family {
+  id: string;
+  name: string;
+  code?: string;
+}
+
 export interface User {
   id: string;
+  familyId: string;
   name: string;
   role: Role;
   avatar: string; // Emoji or URL
@@ -42,6 +49,7 @@ export interface User {
 
 export interface Task {
   id: string;
+  familyId: string;
   title: string;
   points: number;
   assignedTo: string[]; // User IDs (can be multiple)
@@ -93,4 +101,5 @@ export interface Message {
     content: string;
     timestamp: number;
     read: boolean;
+    type?: 'NORMAL' | 'VACILE';
 }

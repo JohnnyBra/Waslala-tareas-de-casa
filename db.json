@@ -1,7 +1,18 @@
 {
+  "families": [
+    {
+      "id": "f1",
+      "name": "Barrero Macías"
+    },
+    {
+      "id": "f2",
+      "name": "Gómez Borrero"
+    }
+  ],
   "users": [
     {
       "id": "u1",
+      "familyId": "f1",
       "name": "Papá",
       "role": "ADMIN",
       "avatar": "👨🏻",
@@ -10,6 +21,7 @@
     },
     {
       "id": "u2",
+      "familyId": "f1",
       "name": "Mamá",
       "role": "ADMIN",
       "avatar": "👩🏻",
@@ -18,6 +30,7 @@
     },
     {
       "id": "u3",
+      "familyId": "f1",
       "name": "Miguel",
       "role": "KID",
       "avatar": "🧑",
@@ -26,6 +39,7 @@
     },
     {
       "id": "u4",
+      "familyId": "f1",
       "name": "Carmen",
       "role": "KID",
       "avatar": "👧",
@@ -34,6 +48,7 @@
     },
     {
       "id": "u5",
+      "familyId": "f1",
       "name": "Pedro",
       "role": "KID",
       "avatar": "👦",
@@ -42,6 +57,7 @@
     },
     {
       "id": "u6",
+      "familyId": "f1",
       "name": "Diego",
       "role": "KID",
       "avatar": "👶",
@@ -50,16 +66,45 @@
     },
     {
       "id": "u7",
+      "familyId": "f1",
       "name": "Alegría",
       "role": "KID",
       "avatar": "👱‍♀️",
       "color": "bg-orange-400",
+      "pin": "0000"
+    },
+    {
+      "id": "u8",
+      "familyId": "f2",
+      "name": "Papá",
+      "role": "ADMIN",
+      "avatar": "👨",
+      "color": "bg-blue-600",
+      "pin": "1234"
+    },
+    {
+      "id": "u9",
+      "familyId": "f2",
+      "name": "Mamá",
+      "role": "ADMIN",
+      "avatar": "👩",
+      "color": "bg-purple-600",
+      "pin": "1234"
+    },
+    {
+      "id": "u10",
+      "familyId": "f2",
+      "name": "Mercedes",
+      "role": "KID",
+      "avatar": "👧",
+      "color": "bg-pink-300",
       "pin": "0000"
     }
   ],
   "tasks": [
     {
       "id": "t1",
+      "familyId": "f1",
       "title": "Hacer la cama",
       "points": 10,
       "assignedTo": [
@@ -82,6 +127,7 @@
     },
     {
       "id": "t2",
+      "familyId": "f1",
       "title": "Poner la mesa",
       "points": 20,
       "assignedTo": [
@@ -97,6 +143,7 @@
     },
     {
       "id": "t3",
+      "familyId": "f1",
       "title": "Recoger juguetes",
       "points": 15,
       "assignedTo": [
@@ -117,6 +164,7 @@
     },
     {
       "id": "t4",
+      "familyId": "f1",
       "title": "Sacar la basura",
       "points": 30,
       "assignedTo": [
@@ -131,6 +179,7 @@
     },
     {
       "id": "t5",
+      "familyId": "f1",
       "title": "Ayudar a cocinar",
       "points": 50,
       "assignedTo": [
@@ -141,6 +190,25 @@
         6
       ],
       "icon": "🍳"
+    },
+    {
+      "id": "t6",
+      "familyId": "f2",
+      "title": "Hacer la cama",
+      "points": 10,
+      "assignedTo": [
+        "u10"
+      ],
+      "recurrence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "icon": "🛏️"
     }
   ],
   "completions": [],

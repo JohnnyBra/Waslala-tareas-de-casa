@@ -1,27 +1,30 @@
-import { User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig } from '../types';
+import { Family, User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig } from '../types';
 import { AVATAR_ITEMS, getItemById } from '../constants/avatarItems';
 
-// Initial Mock Data
+// Initial Mock Data (kept for fallback structure, but using db.json primarily)
+const INITIAL_FAMILIES: Family[] = [
+  { id: 'f1', name: 'Barrero Macías' }
+];
 const INITIAL_USERS: User[] = [
-  { id: 'u1', name: 'Papá', role: Role.ADMIN, avatar: '👨🏻', color: 'bg-blue-600', pin: '1234' },
-  { id: 'u2', name: 'Mamá', role: Role.ADMIN, avatar: '👩🏻', color: 'bg-purple-600', pin: '1234' },
+  { id: 'u1', familyId: 'f1', name: 'Papá', role: Role.ADMIN, avatar: '👨🏻', color: 'bg-blue-600', pin: '1234' },
+  { id: 'u2', familyId: 'f1', name: 'Mamá', role: Role.ADMIN, avatar: '👩🏻', color: 'bg-purple-600', pin: '1234' },
   {
-    id: 'u3', name: 'Miguel', role: Role.KID, avatar: '🧑', color: 'bg-red-400', pin: '0000',
+    id: 'u3', familyId: 'f1', name: 'Miguel', role: Role.KID, avatar: '🧑', color: 'bg-red-400', pin: '0000',
     avatarConfig: { baseId: 'base_boy', topId: 'top_tshirt_red', bottomId: 'bot_shorts_blue', shoesId: 'shoes_sneakers' },
     inventory: ['base_boy', 'top_tshirt_red', 'bot_shorts_blue', 'shoes_sneakers']
   },
-  { id: 'u4', name: 'Carmen', role: Role.KID, avatar: '👧', color: 'bg-pink-400', pin: '0000' },
-  { id: 'u5', name: 'Pedro', role: Role.KID, avatar: '👦', color: 'bg-green-400', pin: '0000' },
-  { id: 'u6', name: 'Diego', role: Role.KID, avatar: '👶', color: 'bg-yellow-400', pin: '0000' },
-  { id: 'u7', name: 'Alegría', role: Role.KID, avatar: '👱‍♀️', color: 'bg-orange-400', pin: '0000' },
+  { id: 'u4', familyId: 'f1', name: 'Carmen', role: Role.KID, avatar: '👧', color: 'bg-pink-400', pin: '0000' },
+  { id: 'u5', familyId: 'f1', name: 'Pedro', role: Role.KID, avatar: '👦', color: 'bg-green-400', pin: '0000' },
+  { id: 'u6', familyId: 'f1', name: 'Diego', role: Role.KID, avatar: '👶', color: 'bg-yellow-400', pin: '0000' },
+  { id: 'u7', familyId: 'f1', name: 'Alegría', role: Role.KID, avatar: '👱‍♀️', color: 'bg-orange-400', pin: '0000' },
 ];
 
 const INITIAL_TASKS: Task[] = [
-  { id: 't1', title: 'Hacer la cama', points: 10, assignedTo: ['u3', 'u4', 'u5', 'u6', 'u7'], recurrence: [0, 1, 2, 3, 4, 5, 6], icon: '🛏️' },
-  { id: 't2', title: 'Poner la mesa', points: 20, assignedTo: ['u3', 'u4'], recurrence: [1, 3, 5], icon: '🍽️' },
-  { id: 't3', title: 'Recoger juguetes', points: 15, assignedTo: ['u5', 'u6', 'u7'], recurrence: [0, 1, 2, 3, 4, 5, 6], icon: '🧸' },
-  { id: 't4', title: 'Sacar la basura', points: 30, assignedTo: ['u3'], recurrence: [2, 4, 6], icon: '🗑️' },
-  { id: 't5', title: 'Ayudar a cocinar', points: 50, assignedTo: ['u4'], recurrence: [0, 6], icon: '🍳' },
+  { id: 't1', familyId: 'f1', title: 'Hacer la cama', points: 10, assignedTo: ['u3', 'u4', 'u5', 'u6', 'u7'], recurrence: [0, 1, 2, 3, 4, 5, 6], icon: '🛏️' },
+  { id: 't2', familyId: 'f1', title: 'Poner la mesa', points: 20, assignedTo: ['u3', 'u4'], recurrence: [1, 3, 5], icon: '🍽️' },
+  { id: 't3', familyId: 'f1', title: 'Recoger juguetes', points: 15, assignedTo: ['u5', 'u6', 'u7'], recurrence: [0, 1, 2, 3, 4, 5, 6], icon: '🧸' },
+  { id: 't4', familyId: 'f1', title: 'Sacar la basura', points: 30, assignedTo: ['u3'], recurrence: [2, 4, 6], icon: '🗑️' },
+  { id: 't5', familyId: 'f1', title: 'Ayudar a cocinar', points: 50, assignedTo: ['u4'], recurrence: [0, 6], icon: '🍳' },
 ];
 
 export const BADGES: Badge[] = [
@@ -33,6 +36,7 @@ export const BADGES: Badge[] = [
 
 // Storage Keys
 const KEYS = {
+  FAMILIES: 'st_families',
   USERS: 'st_users',
   TASKS: 'st_tasks',
   COMPLETIONS: 'st_completions',
@@ -58,6 +62,7 @@ export const DataService = {
 
         if (serverData && Object.keys(serverData).length > 0) {
             // Load server data into localStorage
+            if(serverData.families) localStorage.setItem(KEYS.FAMILIES, JSON.stringify(serverData.families));
             if(serverData.users) localStorage.setItem(KEYS.USERS, JSON.stringify(serverData.users));
             if(serverData.tasks) localStorage.setItem(KEYS.TASKS, JSON.stringify(serverData.tasks));
             if(serverData.completions) localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(serverData.completions));
@@ -67,6 +72,9 @@ export const DataService = {
             if(serverData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(serverData.transactions));
         } else {
             // If server is empty, use initial data if local is also empty
+            if (!localStorage.getItem(KEYS.FAMILIES)) {
+                localStorage.setItem(KEYS.FAMILIES, JSON.stringify(INITIAL_FAMILIES));
+            }
             if (!localStorage.getItem(KEYS.USERS)) {
                 localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
             }
@@ -94,6 +102,7 @@ export const DataService = {
     } catch (e) {
         console.error("Failed to load data from server, falling back to local storage", e);
         // Fallback init
+        if (!localStorage.getItem(KEYS.FAMILIES)) localStorage.setItem(KEYS.FAMILIES, JSON.stringify(INITIAL_FAMILIES));
         if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
         if (!localStorage.getItem(KEYS.TASKS)) localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
     }
@@ -102,6 +111,7 @@ export const DataService = {
   // Sync current localStorage state to server
   syncToServer: async () => {
       const data = {
+          families: JSON.parse(localStorage.getItem(KEYS.FAMILIES) || '[]'),
           users: JSON.parse(localStorage.getItem(KEYS.USERS) || '[]'),
           tasks: JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]'),
           completions: JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]'),
@@ -144,9 +154,38 @@ export const DataService = {
       }
   },
 
+  // Families
+  getFamilies: (): Family[] => {
+    return JSON.parse(localStorage.getItem(KEYS.FAMILIES) || '[]');
+  },
+
+  addFamily: (name: string) => {
+      const families = DataService.getFamilies();
+      const newFamily: Family = {
+          id: 'f' + Date.now(),
+          name
+      };
+      families.push(newFamily);
+      localStorage.setItem(KEYS.FAMILIES, JSON.stringify(families));
+      DataService.syncToServer();
+      return newFamily;
+  },
+
   // Users
   getUsers: (): User[] => {
     return JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+  },
+
+  // Get users for a specific family
+  getFamilyUsers: (familyId: string): User[] => {
+      return DataService.getUsers().filter(u => u.familyId === familyId);
+  },
+
+  createUser: (user: User) => {
+      const users = DataService.getUsers();
+      users.push(user);
+      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      DataService.syncToServer();
   },
 
   updateUser: (updatedUser: User) => {
@@ -162,6 +201,10 @@ export const DataService = {
   // Tasks
   getTasks: (): Task[] => {
     return JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]');
+  },
+
+  getFamilyTasks: (familyId: string): Task[] => {
+      return DataService.getTasks().filter(t => t.familyId === familyId);
   },
   
   saveTask: (task: Task) => {
@@ -242,7 +285,7 @@ export const DataService = {
       return allMessages.filter(m => m.toUserId === userId).sort((a,b) => b.timestamp - a.timestamp);
   },
 
-  sendMessage: (fromUserId: string, toUserId: string, content: string) => {
+  sendMessage: (fromUserId: string, toUserId: string, content: string, type: 'NORMAL' | 'VACILE' = 'NORMAL') => {
       // Send a new motivation message
       const allMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
       const newMsg: Message = {
@@ -251,7 +294,8 @@ export const DataService = {
           toUserId,
           content,
           timestamp: Date.now(),
-          read: false
+          read: false,
+          type
       };
       allMessages.push(newMsg);
       localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
@@ -368,13 +412,21 @@ export const DataService = {
 
     const tasksCompletedCount = completions.length;
     
+    // Vaciles Logic
+    const allMessages = DataService.getMessages(userId); // Messages received (not useful for sent count)
+    const rawAllMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
+    const vacilesSentCount = rawAllMessages.filter(m => m.fromUserId === userId && m.type === 'VACILE').length;
+
     const earnedBadges = BADGES.filter(b => b.condition(points, tasksCompletedCount));
 
-    return { points, spendablePoints, tasksCompletedCount, earnedBadges, extraPointsList };
+    return { points, spendablePoints, tasksCompletedCount, earnedBadges, extraPointsList, vacilesSentCount };
   },
 
-  getLeaderboard: () => {
-    const users = DataService.getUsers().filter(u => u.role === Role.KID);
+  getLeaderboard: (familyId?: string) => {
+    let users = DataService.getUsers().filter(u => u.role === Role.KID);
+    if (familyId) {
+        users = users.filter(u => u.familyId === familyId);
+    }
     return users.map(u => {
       const stats = DataService.getUserStats(u.id);
       return {

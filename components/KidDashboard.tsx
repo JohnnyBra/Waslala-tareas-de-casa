@@ -27,8 +27,9 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [completions, setCompletions] = useState<TaskCompletion[]>([]);
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
   const [view, setView] = useState<'tasks' | 'ranking' | 'badges'>('tasks');
-  const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard());
+  const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard(currentUser.familyId));
   const [rankingTimeframe, setRankingTimeframe] = useState<'weekly' | 'monthly' | 'global'>('global');
+  const [interFamilyRanking, setInterFamilyRanking] = useState<{family: string, score: number}[]>([]);
 
   // Events State
   const [activeEvent, setActiveEvent] = useState<AppEvent | null>(null);
@@ -73,9 +74,9 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     setTasks(myTasks);
     setCompletions(DataService.getCompletions());
     setStats(DataService.getUserStats(currentUser.id));
-    setLeaderboard(DataService.getLeaderboard());
+    setLeaderboard(DataService.getLeaderboard(currentUser.familyId));
     setMessages(DataService.getMessages(currentUser.id));
-    setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id));
+    setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id)); // This includes kids from other families for Vacile
   };
 
   const checkEvents = () => {
@@ -130,12 +131,21 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
             });
         }
         
-        // Taunt Logic: Check total tasks AFTER this completion (current stats + 1)
-        const newTotal = stats.tasksCompletedCount + 1;
-        if (newTotal > 0 && newTotal % 5 === 0) {
+        // Taunt Logic: Trigger modal if available
+        // Recalculate stats for immediate check
+        const newTotalTasks = stats.tasksCompletedCount + 1;
+        const availableVaciles = Math.floor(newTotalTasks / 30) - (stats.vacilesSentCount || 0);
+
+        if (availableVaciles > 0) {
             setTimeout(() => {
-                setShowTauntModal(true);
-            }, 1000); // Small delay to let confetti finish
+                // Only auto-show if they haven't seen it recently, or maybe just let them click the button?
+                // The prompt says "Cada 30 tareas ... se le puede enviar".
+                // I will add a button in the header instead of auto-popup, but auto-popup is nice for engagement.
+                // Let's do auto popup if they just unlocked one.
+                if (newTotalTasks % 30 === 0) {
+                     setShowTauntModal(true);
+                }
+            }, 1000);
         }
     }
 
@@ -143,13 +153,16 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   };
 
   // --- Taunt System Logic ---
+  const availableVaciles = Math.floor(stats.tasksCompletedCount / 30) - (stats.vacilesSentCount || 0);
+
   const handleSendTaunt = () => {
       if (tauntTarget && tauntMessage) {
-          DataService.sendMessage(currentUser.id, tauntTarget, tauntMessage);
+          DataService.sendMessage(currentUser.id, tauntTarget, tauntMessage, 'VACILE');
           setShowTauntModal(false);
           setTauntTarget('');
           setTauntMessage('');
-          alert('¡Mensaje enviado!');
+          loadData(); // Refresh to update vacile count
+          alert('¡Vacile enviado!');
       }
   };
 
@@ -330,25 +343,71 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       }
 
       const tasks = DataService.getTasks();
-      const users = DataService.getUsers().filter(u => u.role === Role.KID);
 
-      return users.map(user => {
-            let points = 0;
-            const userCompletions = filteredCompletions.filter(c => c.userId === user.id);
-            userCompletions.forEach(c => {
-                const task = tasks.find(t => t.id === c.taskId);
-                if (task) points += task.points;
-            });
+      // Internal Family Ranking
+      if (rankingTimeframe !== 'global') {
+          const users = DataService.getFamilyUsers(currentUser.familyId).filter(u => u.role === Role.KID);
+          return users.map(user => {
+                let points = 0;
+                const userCompletions = filteredCompletions.filter(c => c.userId === user.id);
+                userCompletions.forEach(c => {
+                    const task = tasks.find(t => t.id === c.taskId);
+                    if (task) points += task.points;
+                });
 
-            const userExtras = filteredExtras.filter(e => e.userId === user.id);
-            userExtras.forEach(e => points += e.points);
+                const userExtras = filteredExtras.filter(e => e.userId === user.id);
+                userExtras.forEach(e => points += e.points);
 
-            return {
-                ...user,
-                points,
-                tasksCompletedCount: userCompletions.length
-            };
-      }).sort((a, b) => b.points - a.points);
+                return {
+                    id: user.id,
+                    name: user.name,
+                    avatar: user.avatar,
+                    points,
+                    tasksCompletedCount: userCompletions.length,
+                    type: 'user'
+                };
+          }).sort((a, b) => b.points - a.points);
+      } else {
+          // Global Inter-Family Ranking
+          const families = DataService.getFamilies();
+          const allKids = DataService.getUsers().filter(u => u.role === Role.KID);
+
+          return families.map(family => {
+              const familyKids = allKids.filter(k => k.familyId === family.id);
+              if (familyKids.length === 0) return { id: family.id, name: family.name, avatar: '🏠', points: 0, tasksCompletedCount: 0, type: 'family' };
+
+              let totalPoints = 0;
+              let totalTasks = 0;
+
+              familyKids.forEach(kid => {
+                  const kidCompletions = DataService.getCompletions().filter(c => c.userId === kid.id);
+                  const kidExtras = DataService.getExtraPoints().filter(e => e.userId === kid.id);
+
+                  // Calculate raw points for kid
+                  let kidPoints = 0;
+                  kidCompletions.forEach(c => {
+                      const task = tasks.find(t => t.id === c.taskId);
+                      if (task) kidPoints += task.points;
+                  });
+                  kidExtras.forEach(e => kidPoints += e.points);
+
+                  totalPoints += kidPoints;
+                  totalTasks += kidCompletions.length;
+              });
+
+              // Relative Score: Total Points / Num Kids
+              const relativeScore = Math.round(totalPoints / familyKids.length);
+
+              return {
+                  id: family.id,
+                  name: family.name,
+                  avatar: '🏠', // Or a family icon
+                  points: relativeScore,
+                  tasksCompletedCount: totalTasks,
+                  type: 'family'
+              };
+          }).sort((a, b) => b.points - a.points);
+      }
   };
 
   const renderRanking = () => {
@@ -357,7 +416,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       return (
         <div className="space-y-4 animate-fade-in">
         <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
-            <Icons.Trophy className="text-brand-yellow" /> Ranking Familiar
+            <Icons.Trophy className="text-brand-yellow" /> Ranking {rankingTimeframe === 'global' ? 'Global de Familias' : 'Familiar'}
         </h2>
 
         <div className="flex bg-gray-200 p-1 rounded-xl mb-4">
@@ -366,24 +425,32 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
              <button onClick={() => setRankingTimeframe('global')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'global' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Global</button>
         </div>
 
-        {rankingData.map((user, index) => (
-            <div key={user.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
+        {rankingData.map((item, index) => (
+            <div key={item.id} className={`bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden ${item.id === currentUser.familyId && rankingTimeframe === 'global' ? 'border-2 border-brand-blue' : ''}`}>
                 {index === 0 && <div className="absolute top-0 right-0 bg-brand-yellow text-xs font-bold px-2 py-1 rounded-bl-lg">LÍDER</div>}
             <div className="font-bold text-2xl text-gray-300 w-8">{index + 1}</div>
             <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-gray-100 shadow-sm border-2 border-white">
-                {user.avatar.startsWith('data:') ? (
-                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                {item.avatar.startsWith('data:') ? (
+                    <img src={item.avatar} alt={item.name} className="w-full h-full object-cover" />
                 ) : (
-                    <span className="text-2xl">{user.avatar}</span>
+                    <span className="text-2xl">{item.avatar}</span>
                 )}
             </div>
             <div className="flex-1">
-                <div className="font-bold text-gray-800">{user.name}</div>
-                <div className="text-xs text-gray-500">{user.tasksCompletedCount} tareas</div>
+                <div className="font-bold text-gray-800">{item.name} {item.id === currentUser.id && '(Tú)'} {item.id === currentUser.familyId && rankingTimeframe === 'global' && '(Tu Familia)'}</div>
+                <div className="text-xs text-gray-500">
+                    {rankingTimeframe === 'global' ? 'Puntos relativos' : `${item.tasksCompletedCount} tareas`}
+                </div>
             </div>
-            <div className="font-extrabold text-brand-blue text-xl">{user.points} pts</div>
+            <div className="font-extrabold text-brand-blue text-xl">{item.points} pts</div>
             </div>
         ))}
+
+        {rankingTimeframe === 'global' && (
+            <div className="text-center text-xs text-gray-400 mt-2 italic">
+                * Puntos relativos = Total puntos familia / Número de niños
+            </div>
+        )}
         </div>
       );
   };
@@ -513,6 +580,17 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                  )}
                </button>
 
+               {/* Vacile Button (Visible if > 0) */}
+               {availableVaciles > 0 && (
+                   <button
+                       onClick={() => setShowTauntModal(true)}
+                       className="bg-brand-pink text-white px-4 py-2 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"
+                   >
+                       <Icons.MessageCircle size={20} />
+                       {availableVaciles}
+                   </button>
+               )}
+
                <div className="bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm font-bold flex items-center gap-2">
                  <Icons.Star className="w-5 h-5 text-yellow-300 fill-current" />
                  {stats.points}
@@ -555,30 +633,39 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
              <div className="bg-white rounded-3xl p-6 w-full max-w-sm animate-fade-in-up">
                  <div className="text-center mb-6">
                      <Icons.MessageCircle size={48} className="text-brand-pink mx-auto mb-2" />
-                     <h3 className="font-bold text-2xl text-brand-dark">¡Racha de 5 tareas!</h3>
-                     <p className="text-gray-500">Es hora de vacilar a tus hermanos 😎</p>
+                     <h3 className="font-bold text-2xl text-brand-dark">¡Vacile Disponible! ({availableVaciles})</h3>
+                     <p className="text-gray-500">Elige una "víctima" de otra familia 😈</p>
                  </div>
                  
                  <div className="space-y-4">
                      <div>
-                         <label className="block text-sm font-bold text-gray-600 mb-2">¿A quién se lo dices?</label>
+                         <label className="block text-sm font-bold text-gray-600 mb-2">¿A quién se lo envías?</label>
                          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                             {allKids.map(kid => (
+                             {allKids.filter(k => k.familyId !== currentUser.familyId).length === 0 && (
+                                 <p className="text-sm text-gray-400 italic">No hay niños en otras familias...</p>
+                             )}
+                             {allKids.filter(k => k.familyId !== currentUser.familyId).map(kid => {
+                                 // We don't have direct access to Family Name here easily without looking it up, but that's fine.
+                                 const families = DataService.getFamilies();
+                                 const familyName = families.find(f => f.id === kid.familyId)?.name;
+
+                                 return (
                                  <button
                                     key={kid.id}
                                     onClick={() => setTauntTarget(kid.id)}
-                                    className={`flex flex-col items-center min-w-[4rem] p-2 rounded-xl transition-all ${tauntTarget === kid.id ? 'bg-brand-blue text-white ring-2 ring-brand-blue ring-offset-2' : 'bg-gray-100 opacity-70'}`}
+                                    className={`flex flex-col items-center min-w-[5rem] p-2 rounded-xl transition-all border-2 ${tauntTarget === kid.id ? 'bg-brand-pink text-white border-brand-pink' : 'bg-white border-gray-100'}`}
                                  >
-                                    <div className="text-2xl mb-1">
+                                    <div className="text-3xl mb-1">
                                         {kid.avatar.startsWith('data:') ? (
-                                            <div className="w-8 h-8 rounded-full overflow-hidden">
+                                            <div className="w-10 h-10 rounded-full overflow-hidden">
                                                 <img src={kid.avatar} className="w-full h-full object-cover"/>
                                             </div>
                                         ) : kid.avatar}
                                     </div>
                                     <span className="text-xs font-bold truncate w-full text-center">{kid.name}</span>
+                                    <span className="text-[10px] text-gray-400 truncate w-full text-center">{familyName}</span>
                                  </button>
-                             ))}
+                             )})}
                          </div>
                      </div>
 
