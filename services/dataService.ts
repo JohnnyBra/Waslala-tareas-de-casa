@@ -44,20 +44,38 @@ const KEYS = {
   MESSAGES: 'st_messages',
   EVENTS: 'st_events',
   TRANSACTIONS: 'st_transactions',
-  REWARDS: 'st_rewards'
+  REWARDS: 'st_rewards',
+  LAST_UPDATED: 'st_last_updated',
+  LAST_SYNCED: 'st_last_synced'
 };
 
-// API Base URL (relative since we serve from same origin in production)
-// In development, you might need to change this if running on different ports
+// API Base URL
 const API_BASE = '/api';
 
 // Helper to get today's date string YYYY-MM-DD
 export const getTodayString = () => new Date().toISOString().split('T')[0];
 
+// Synchronization State
+let syncTimeout: any = null;
+let isSyncing = false;
+let pendingSync = false;
+
 export const DataService = {
   // Initialization: Load from server and populate localStorage
   init: async () => {
     try {
+        // Check for unsaved local changes
+        const lastUpdated = parseInt(localStorage.getItem(KEYS.LAST_UPDATED) || '0');
+        const lastSynced = parseInt(localStorage.getItem(KEYS.LAST_SYNCED) || '0');
+
+        // If we have local changes not yet synced (and lastUpdated is reasonably recent/valid)
+        if (lastUpdated > lastSynced && lastUpdated > 0) {
+            console.log("Found unsaved local changes, syncing to server...", { lastUpdated, lastSynced });
+            await DataService.processSync();
+            // We assume local state is now the authority.
+            return;
+        }
+
         const response = await fetch(`${API_BASE}/data`);
         const serverData = await response.json();
 
@@ -72,6 +90,11 @@ export const DataService = {
             if(serverData.events) localStorage.setItem(KEYS.EVENTS, JSON.stringify(serverData.events));
             if(serverData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(serverData.transactions));
             if(serverData.rewards) localStorage.setItem(KEYS.REWARDS, JSON.stringify(serverData.rewards));
+
+            // Sync timestamps
+            const now = Date.now().toString();
+            localStorage.setItem(KEYS.LAST_SYNCED, now);
+            localStorage.setItem(KEYS.LAST_UPDATED, now);
         } else {
             // If server is empty, use initial data if local is also empty
             if (!localStorage.getItem(KEYS.FAMILIES)) {
@@ -113,8 +136,29 @@ export const DataService = {
     }
   },
 
-  // Sync current localStorage state to server
-  syncToServer: async () => {
+  // Public sync request (debounced)
+  syncToServer: () => {
+      // Mark local state as updated
+      localStorage.setItem(KEYS.LAST_UPDATED, Date.now().toString());
+
+      if (syncTimeout) {
+          clearTimeout(syncTimeout);
+      }
+
+      // Debounce sync request
+      syncTimeout = setTimeout(() => {
+          DataService.processSync();
+      }, 2000); // 2 seconds debounce
+  },
+
+  // Actual sync process
+  processSync: async () => {
+      if (isSyncing) {
+          pendingSync = true;
+          return;
+      }
+
+      isSyncing = true;
       const data = {
           families: JSON.parse(localStorage.getItem(KEYS.FAMILIES) || '[]'),
           users: JSON.parse(localStorage.getItem(KEYS.USERS) || '[]'),
@@ -131,10 +175,22 @@ export const DataService = {
           await fetch(`${API_BASE}/data`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data)
+              body: JSON.stringify(data),
+              keepalive: true // Important for background sync on tab close
           });
+
+          // On success, mark as synced
+          localStorage.setItem(KEYS.LAST_SYNCED, Date.now().toString());
+
       } catch (e) {
           console.error("Failed to sync to server", e);
+          // Retry? For now, we rely on the next sync or reload/init logic
+      } finally {
+          isSyncing = false;
+          if (pendingSync) {
+              pendingSync = false;
+              DataService.syncToServer(); // Trigger another debounce cycle if changes happened during sync
+          }
       }
   },
 
@@ -518,3 +574,10 @@ export const DataService = {
     }).sort((a, b) => b.points - a.points);
   }
 };
+
+// Listen for window unload to attempt a final sync
+window.addEventListener('beforeunload', () => {
+    if (syncTimeout) {
+        DataService.processSync();
+    }
+});
