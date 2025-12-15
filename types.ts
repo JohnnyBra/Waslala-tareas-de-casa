@@ -19,6 +19,18 @@ export interface Task {
   assignedTo: string[]; // User IDs (can be multiple)
   recurrence: number[]; // 0-6 (Sunday-Saturday)
   icon: string;
+  isUnique?: boolean; // If true, only one person can complete it per day
+}
+
+export interface Event {
+  id: string;
+  title: string;
+  description: string;
+  date: string; // YYYY-MM-DD
+  type: 'popup' | 'banner';
+  style: 'default' | 'golden' | 'sparkle';
+  assignedTo: string[];
+  readBy: string[];
 }
 
 export interface TaskCompletion {

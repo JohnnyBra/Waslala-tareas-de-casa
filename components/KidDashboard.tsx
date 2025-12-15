@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Task, TaskCompletion, Role, Message } from '../types';
+import { User, Task, TaskCompletion, Role, Message, Event as AppEvent } from '../types';
 import { DataService, getTodayString } from '../services/dataService';
 import { Icons } from './Icon';
 import Confetti from 'canvas-confetti';
@@ -26,6 +26,10 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
   const [view, setView] = useState<'tasks' | 'ranking' | 'badges'>('tasks');
   const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard());
+  const [rankingTimeframe, setRankingTimeframe] = useState<'weekly' | 'monthly' | 'global'>('global');
+
+  // Events State
+  const [activeEvent, setActiveEvent] = useState<AppEvent | null>(null);
   
   // Weekly View State
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -50,6 +54,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   useEffect(() => {
     loadData();
+    checkEvents();
   }, [currentUser, selectedDate]);
 
   const loadData = () => {
@@ -68,6 +73,39 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     setLeaderboard(DataService.getLeaderboard());
     setMessages(DataService.getMessages(currentUser.id));
     setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id));
+  };
+
+  const checkEvents = () => {
+      const events = DataService.getEvents();
+      const today = getTodayString();
+      // Find unread event for today or past unread events (optional, let's stick to showing if it's assigned)
+      // We show one event at a time
+      const eventToShow = events.find(e =>
+          e.assignedTo.includes(currentUser.id) &&
+          !e.readBy.includes(currentUser.id) &&
+          e.date <= today // Show if date is today or past
+      );
+
+      if (eventToShow) {
+          setActiveEvent(eventToShow);
+          if (eventToShow.style === 'sparkle') {
+               Confetti({
+                particleCount: 150,
+                spread: 100,
+                origin: { y: 0.6 },
+                colors: ['#FFD700', '#FFA500', '#FFFFFF']
+            });
+          }
+      }
+  };
+
+  const handleCloseEvent = () => {
+      if (activeEvent) {
+          DataService.markEventAsRead(activeEvent.id, currentUser.id);
+          setActiveEvent(null);
+          // Check for more events after a short delay
+          setTimeout(checkEvents, 500);
+      }
   };
 
   const getSelectedDateString = () => selectedDate.toISOString().split('T')[0];
@@ -192,6 +230,23 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     return completions.some(c => c.taskId === taskId && c.userId === currentUser.id && c.date === dateStr);
   };
 
+  const getTaskStatus = (task: Task) => {
+      const dateStr = getSelectedDateString();
+      const myCompletion = completions.find(c => c.taskId === task.id && c.userId === currentUser.id && c.date === dateStr);
+
+      if (myCompletion) return { status: 'completed_by_me' };
+
+      if (task.isUnique) {
+          const anyCompletion = completions.find(c => c.taskId === task.id && c.date === dateStr);
+          if (anyCompletion) {
+              const user = allKids.find(k => k.id === anyCompletion.userId);
+              return { status: 'completed_by_other', user };
+          }
+      }
+
+      return { status: 'pending' };
+  };
+
   // --- Render Helpers ---
   const getWeekDays = () => {
       const curr = new Date();
@@ -241,31 +296,84 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       </div>
   );
 
-  const renderRanking = () => (
-    <div className="space-y-4 animate-fade-in">
-      <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
-        <Icons.Trophy className="text-brand-yellow" /> Ranking Familiar
-      </h2>
-      {leaderboard.map((user, index) => (
-        <div key={user.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
-            {index === 0 && <div className="absolute top-0 right-0 bg-brand-yellow text-xs font-bold px-2 py-1 rounded-bl-lg">LÍDER</div>}
-          <div className="font-bold text-2xl text-gray-300 w-8">{index + 1}</div>
-          <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-gray-100 shadow-sm border-2 border-white">
-            {user.avatar.startsWith('data:') ? (
-                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-            ) : (
-                <span className="text-2xl">{user.avatar}</span>
-            )}
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-gray-800">{user.name}</div>
-            <div className="text-xs text-gray-500">{user.tasksCompletedCount} tareas totales</div>
-          </div>
-          <div className="font-extrabold text-brand-blue text-xl">{user.points} pts</div>
+  const getRankingData = () => {
+      let filteredCompletions = DataService.getCompletions();
+      let filteredExtras = DataService.getExtraPoints();
+
+      if (rankingTimeframe === 'weekly') {
+            const curr = new Date();
+            const first = curr.getDate() - curr.getDay() + 1;
+            const startOfWeek = new Date(curr.setDate(first));
+            if (new Date().getDay() === 0) startOfWeek.setDate(startOfWeek.getDate() - 7);
+            const startStr = startOfWeek.toISOString().split('T')[0];
+
+            filteredCompletions = filteredCompletions.filter(c => c.date >= startStr);
+            filteredExtras = filteredExtras.filter(e => new Date(e.timestamp).toISOString().split('T')[0] >= startStr);
+      } else if (rankingTimeframe === 'monthly') {
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+            filteredCompletions = filteredCompletions.filter(c => c.date >= startOfMonth);
+            filteredExtras = filteredExtras.filter(e => new Date(e.timestamp).toISOString().split('T')[0] >= startOfMonth);
+      }
+
+      const tasks = DataService.getTasks();
+      const users = DataService.getUsers().filter(u => u.role === Role.KID);
+
+      return users.map(user => {
+            let points = 0;
+            const userCompletions = filteredCompletions.filter(c => c.userId === user.id);
+            userCompletions.forEach(c => {
+                const task = tasks.find(t => t.id === c.taskId);
+                if (task) points += task.points;
+            });
+
+            const userExtras = filteredExtras.filter(e => e.userId === user.id);
+            userExtras.forEach(e => points += e.points);
+
+            return {
+                ...user,
+                points,
+                tasksCompletedCount: userCompletions.length
+            };
+      }).sort((a, b) => b.points - a.points);
+  };
+
+  const renderRanking = () => {
+      const rankingData = getRankingData();
+
+      return (
+        <div className="space-y-4 animate-fade-in">
+        <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
+            <Icons.Trophy className="text-brand-yellow" /> Ranking Familiar
+        </h2>
+
+        <div className="flex bg-gray-200 p-1 rounded-xl mb-4">
+             <button onClick={() => setRankingTimeframe('weekly')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'weekly' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Semanal</button>
+             <button onClick={() => setRankingTimeframe('monthly')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'monthly' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Mensual</button>
+             <button onClick={() => setRankingTimeframe('global')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'global' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Global</button>
         </div>
-      ))}
-    </div>
-  );
+
+        {rankingData.map((user, index) => (
+            <div key={user.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden">
+                {index === 0 && <div className="absolute top-0 right-0 bg-brand-yellow text-xs font-bold px-2 py-1 rounded-bl-lg">LÍDER</div>}
+            <div className="font-bold text-2xl text-gray-300 w-8">{index + 1}</div>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-gray-100 shadow-sm border-2 border-white">
+                {user.avatar.startsWith('data:') ? (
+                    <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                    <span className="text-2xl">{user.avatar}</span>
+                )}
+            </div>
+            <div className="flex-1">
+                <div className="font-bold text-gray-800">{user.name}</div>
+                <div className="text-xs text-gray-500">{user.tasksCompletedCount} tareas</div>
+            </div>
+            <div className="font-extrabold text-brand-blue text-xl">{user.points} pts</div>
+            </div>
+        ))}
+        </div>
+      );
+  };
 
   const renderBadges = () => (
     <div className="grid grid-cols-2 gap-4 animate-fade-in">
@@ -301,30 +409,45 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         </div>
       ) : (
         tasks.map(task => {
-          const completed = isCompleted(task.id);
+          const statusObj = getTaskStatus(task);
+          const isDoneByMe = statusObj.status === 'completed_by_me';
+          const isDoneByOther = statusObj.status === 'completed_by_other';
+
           return (
             <div 
                 key={task.id} 
-                onClick={() => handleToggleTask(task.id)}
+                onClick={() => {
+                    if (!isDoneByOther) handleToggleTask(task.id);
+                }}
                 className={`
-                    relative p-4 rounded-3xl shadow-md transition-all duration-300 transform active:scale-95 cursor-pointer border-4
-                    ${completed ? 'bg-green-50 border-brand-green' : 'bg-white border-transparent hover:border-brand-blue'}
+                    relative p-4 rounded-3xl shadow-md transition-all duration-300 transform border-4
+                    ${isDoneByMe ? 'bg-green-50 border-brand-green' : isDoneByOther ? 'bg-gray-100 border-gray-200 opacity-70' : 'bg-white border-transparent hover:border-brand-blue active:scale-95 cursor-pointer'}
                 `}
             >
               <div className="flex items-center gap-4">
                 <div className={`
                     w-16 h-16 rounded-2xl flex items-center justify-center text-4xl transition-colors
-                    ${completed ? 'bg-brand-green text-white' : 'bg-gray-100'}
+                    ${isDoneByMe ? 'bg-brand-green text-white' : isDoneByOther ? 'bg-gray-300 text-gray-500' : 'bg-gray-100'}
                 `}>
-                  {completed ? <Icons.Check /> : task.icon}
+                  {isDoneByMe ? <Icons.Check /> : isDoneByOther ? <Icons.Lock size={24}/> : task.icon}
                 </div>
                 <div className="flex-1">
-                  <h3 className={`font-bold text-lg ${completed ? 'text-green-700 line-through' : 'text-gray-800'}`}>
+                  <h3 className={`font-bold text-lg ${isDoneByMe ? 'text-green-700 line-through' : isDoneByOther ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
                     {task.title}
                   </h3>
-                  <span className="inline-block bg-brand-yellow/20 text-brand-dark text-xs font-bold px-2 py-1 rounded-full">
-                    +{task.points} puntos
-                  </span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="inline-block bg-brand-yellow/20 text-brand-dark text-xs font-bold px-2 py-1 rounded-full">
+                        +{task.points} puntos
+                    </span>
+                    {task.isUnique && (
+                         <span className="bg-purple-100 text-purple-600 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold">Única</span>
+                    )}
+                  </div>
+                  {isDoneByOther && (
+                      <p className="text-xs text-gray-500 mt-1 font-bold">
+                          Completado por {statusObj.user?.name}
+                      </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -515,6 +638,45 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                           })
                       )}
                   </div>
+              </div>
+          </div>
+      )}
+
+      {/* Active Event Modal */}
+      {activeEvent && (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in">
+              <div className={`
+                  bg-white rounded-3xl p-8 w-full max-w-sm text-center relative overflow-hidden shadow-2xl
+                  ${activeEvent.style === 'golden' ? 'border-4 border-yellow-400 shadow-yellow-200' : ''}
+              `}>
+                  {/* Background effects */}
+                  {activeEvent.style === 'golden' && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-yellow-50 via-white to-yellow-100 opacity-50 -z-10"></div>
+                  )}
+                  {activeEvent.style === 'sparkle' && (
+                      <div className="absolute inset-0 bg-gradient-to-br from-purple-50 via-white to-pink-100 opacity-50 -z-10"></div>
+                  )}
+
+                  <div className="mb-6">
+                      <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center text-4xl mb-4 ${activeEvent.style === 'golden' ? 'bg-yellow-100 text-yellow-600' : 'bg-brand-blue/10 text-brand-blue'}`}>
+                          {activeEvent.style === 'sparkle' ? '✨' : activeEvent.style === 'golden' ? '🏆' : '📅'}
+                      </div>
+                      <h2 className="text-3xl font-bold text-gray-800 mb-2">{activeEvent.title}</h2>
+                      <div className="w-16 h-1 bg-brand-yellow mx-auto rounded-full mb-4"></div>
+                      <p className="text-gray-600 font-medium text-lg leading-relaxed">
+                          {activeEvent.description}
+                      </p>
+                  </div>
+
+                  <button
+                    onClick={handleCloseEvent}
+                    className={`
+                        w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-transform active:scale-95
+                        ${activeEvent.style === 'golden' ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white' : 'bg-brand-dark text-white'}
+                    `}
+                  >
+                      ¡Entendido!
+                  </button>
               </div>
           </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Task, Role } from '../types';
+import { User, Task, Role, Event as AppEvent } from '../types';
 import { DataService, getTodayString } from '../services/dataService';
 import { Icons } from './Icon';
 
@@ -55,7 +55,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showPointsModal, setShowPointsModal] = useState<string | null>(null); // userId or null
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [view, setView] = useState<'status' | 'weekly' | 'manage'>('status');
+  const [view, setView] = useState<'status' | 'weekly' | 'manage' | 'events'>('status');
 
   // Date State
   const [selectedDate, setSelectedDate] = useState(getTodayString());
@@ -78,6 +78,16 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [newTaskIcon, setNewTaskIcon] = useState('🧹');
   const [newTaskAssignees, setNewTaskAssignees] = useState<string[]>([]);
   const [newTaskRecurrence, setNewTaskRecurrence] = useState<number[]>([0,1,2,3,4,5,6]);
+  const [newTaskIsUnique, setNewTaskIsUnique] = useState(false);
+
+  // Events Form State
+  const [events, setEvents] = useState<AppEvent[]>([]);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventDescription, setNewEventDescription] = useState('');
+  const [newEventDate, setNewEventDate] = useState(getTodayString());
+  const [newEventStyle, setNewEventStyle] = useState<'default' | 'golden' | 'sparkle'>('default');
+  const [newEventAssignees, setNewEventAssignees] = useState<string[]>([]);
 
   // Points Form State
   const [pointsAmount, setPointsAmount] = useState(10);
@@ -92,6 +102,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     setUsers(DataService.getUsers());
     setCompletions(DataService.getCompletions());
     setExtraPoints(DataService.getExtraPoints());
+    setEvents(DataService.getEvents());
   };
 
   const changeDate = (days: number) => {
@@ -109,7 +120,8 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         points: Number(newTaskPoints),
         icon: newTaskIcon,
         assignedTo: newTaskAssignees,
-        recurrence: newTaskRecurrence
+        recurrence: newTaskRecurrence,
+        isUnique: newTaskIsUnique
     };
 
     DataService.saveTask(taskToSave);
@@ -125,6 +137,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setNewTaskIcon(task.icon);
       setNewTaskAssignees(task.assignedTo);
       setNewTaskRecurrence(task.recurrence);
+      setNewTaskIsUnique(task.isUnique || false);
       setShowAddModal(true);
   };
 
@@ -210,6 +223,36 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setNewTaskPoints(10);
       setNewTaskAssignees([]);
       setNewTaskRecurrence([0,1,2,3,4,5,6]);
+      setNewTaskIsUnique(false);
+  };
+
+  const resetEventForm = () => {
+      setNewEventTitle('');
+      setNewEventDescription('');
+      setNewEventDate(getTodayString());
+      setNewEventStyle('default');
+      setNewEventAssignees([]);
+  }
+
+  const handleCreateEvent = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newEventTitle || newEventAssignees.length === 0) return;
+
+      const event: AppEvent = {
+          id: Date.now().toString(),
+          title: newEventTitle,
+          description: newEventDescription,
+          date: newEventDate,
+          type: 'popup',
+          style: newEventStyle,
+          assignedTo: newEventAssignees,
+          readBy: []
+      };
+
+      DataService.saveEvent(event);
+      setShowEventModal(false);
+      resetEventForm();
+      loadData();
   };
 
   const toggleAssignee = (id: string) => {
@@ -221,6 +264,12 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const toggleRecurrence = (day: number) => {
       setNewTaskRecurrence(prev => 
         prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day].sort()
+      );
+  };
+
+  const toggleEventAssignee = (id: string) => {
+      setNewEventAssignees(prev =>
+          prev.includes(id) ? prev.filter(uid => uid !== id) : [...prev, id]
       );
   };
 
@@ -444,6 +493,47 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       </div>
   );
 
+  const renderEvents = () => (
+      <div className="space-y-4">
+           <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-800">Gestionar Eventos</h2>
+            <button
+                onClick={() => setShowEventModal(true)}
+                className="bg-brand-purple text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-purple-600 bg-purple-500"
+            >
+                <Icons.Plus size={20}/> Nuevo Evento
+            </button>
+          </div>
+
+          <div className="grid gap-4">
+              {events.map(event => (
+                  <div key={event.id} className="bg-white p-4 rounded-xl shadow-sm border border-purple-50">
+                      <div className="flex justify-between items-start">
+                          <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-bold text-lg text-gray-800">{event.title}</span>
+                                  {event.style === 'golden' && <span className="text-yellow-500 text-xs bg-yellow-100 px-2 py-0.5 rounded-full uppercase font-bold">Dorado</span>}
+                                  {event.style === 'sparkle' && <span className="text-purple-500 text-xs bg-purple-100 px-2 py-0.5 rounded-full uppercase font-bold">Brillos</span>}
+                              </div>
+                              <p className="text-gray-500 text-sm mb-2">{event.description}</p>
+                              <div className="flex gap-3 text-xs font-bold text-gray-400">
+                                  <span className="flex items-center gap-1"><Icons.Calendar size={12}/> {formatDate(event.date)}</span>
+                                  <span className="flex items-center gap-1"><Icons.Users size={12}/> {event.assignedTo.length} niños</span>
+                                  <span className="flex items-center gap-1"><Icons.Check size={12}/> Visto por {event.readBy.length}</span>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              ))}
+              {events.length === 0 && (
+                  <div className="text-center py-10 text-gray-400 italic">
+                      No hay eventos creados
+                  </div>
+              )}
+          </div>
+      </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
         <header className="bg-white p-4 shadow-sm sticky top-0 z-10 flex justify-between items-center">
@@ -476,11 +566,18 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                 >
                     Editar Tareas
                 </button>
+                <button
+                    onClick={() => setView('events')}
+                    className={`flex-1 py-2 px-2 whitespace-nowrap rounded-lg font-bold text-sm ${view === 'events' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
+                >
+                    Eventos
+                </button>
             </div>
 
             {view === 'status' && renderStatus()}
             {view === 'weekly' && renderWeekly()}
             {view === 'manage' && renderManage()}
+            {view === 'events' && renderEvents()}
         </div>
 
         {/* Add Task Modal */}
@@ -581,6 +678,22 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                              </div>
                         </div>
 
+                        {/* Unique Task Checkbox */}
+                        <div className="bg-purple-50 p-3 rounded-xl border border-purple-100">
+                             <label className="flex items-center gap-3 cursor-pointer">
+                                 <input
+                                    type="checkbox"
+                                    checked={newTaskIsUnique}
+                                    onChange={e => setNewTaskIsUnique(e.target.checked)}
+                                    className="w-5 h-5 rounded text-brand-purple focus:ring-purple-500 border-gray-300"
+                                 />
+                                 <div>
+                                     <span className="font-bold text-gray-700 block">Tarea Única</span>
+                                     <span className="text-xs text-gray-500">Solo puede completarla UNA persona al día (el primero que la haga).</span>
+                                 </div>
+                             </label>
+                        </div>
+
                         <div className="flex gap-3 pt-4">
                             <button 
                                 type="button" 
@@ -597,6 +710,100 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        )}
+
+        {/* Create Event Modal */}
+        {showEventModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto animate-fade-in-up">
+                     <h2 className="text-2xl font-bold mb-4">Nuevo Evento Especial</h2>
+                     <form onSubmit={handleCreateEvent} className="space-y-4">
+                         <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Título</label>
+                            <input
+                                required
+                                value={newEventTitle}
+                                onChange={e => setNewEventTitle(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none"
+                                placeholder="Ej: Noche de Pizza"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Mensaje / Descripción</label>
+                            <textarea
+                                required
+                                value={newEventDescription}
+                                onChange={e => setNewEventDescription(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none h-24"
+                                placeholder="¡Hoy cenamos pizza por sacar buenas notas!"
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                             <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Fecha</label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={newEventDate}
+                                    onChange={e => setNewEventDate(e.target.value)}
+                                    className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none"
+                                />
+                             </div>
+                             <div>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">Estilo</label>
+                                <select
+                                    value={newEventStyle}
+                                    onChange={e => setNewEventStyle(e.target.value as any)}
+                                    className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none bg-white"
+                                >
+                                    <option value="default">Normal</option>
+                                    <option value="golden">Dorado</option>
+                                    <option value="sparkle">Brillos ✨</option>
+                                </select>
+                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Para quién:</label>
+                            <div className="flex flex-wrap gap-2">
+                                {kids.map(kid => (
+                                    <button
+                                        key={kid.id}
+                                        type="button"
+                                        onClick={() => toggleEventAssignee(kid.id)}
+                                        className={`px-3 py-2 rounded-full text-sm font-bold border-2 transition-all flex items-center gap-2 ${
+                                            newEventAssignees.includes(kid.id)
+                                            ? `bg-purple-500 text-white border-purple-500`
+                                            : 'bg-white text-gray-500 border-gray-200'
+                                        }`}
+                                    >
+                                        {kid.avatar.startsWith('data:') || kid.avatar.startsWith('/uploads/') ? (
+                                            <img src={kid.avatar} className="w-5 h-5 rounded-full object-cover"/>
+                                        ) : kid.avatar}
+                                        {kid.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowEventModal(false)}
+                                className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 py-3 rounded-xl font-bold bg-purple-500 text-white shadow-lg hover:bg-purple-600"
+                            >
+                                Crear Evento
+                            </button>
+                        </div>
+                     </form>
                 </div>
             </div>
         )}
