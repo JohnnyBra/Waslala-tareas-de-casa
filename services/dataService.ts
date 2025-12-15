@@ -1,10 +1,15 @@
-import { User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event } from '../types';
+import { User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig } from '../types';
+import { AVATAR_ITEMS, getItemById } from '../constants/avatarItems';
 
 // Initial Mock Data
 const INITIAL_USERS: User[] = [
   { id: 'u1', name: 'Papá', role: Role.ADMIN, avatar: '👨🏻', color: 'bg-blue-600', pin: '1234' },
   { id: 'u2', name: 'Mamá', role: Role.ADMIN, avatar: '👩🏻', color: 'bg-purple-600', pin: '1234' },
-  { id: 'u3', name: 'Miguel', role: Role.KID, avatar: '🧑', color: 'bg-red-400', pin: '0000' },
+  {
+    id: 'u3', name: 'Miguel', role: Role.KID, avatar: '🧑', color: 'bg-red-400', pin: '0000',
+    avatarConfig: { baseId: 'base_boy', topId: 'top_tshirt_red', bottomId: 'bot_shorts_blue', shoesId: 'shoes_sneakers' },
+    inventory: ['base_boy', 'top_tshirt_red', 'bot_shorts_blue', 'shoes_sneakers']
+  },
   { id: 'u4', name: 'Carmen', role: Role.KID, avatar: '👧', color: 'bg-pink-400', pin: '0000' },
   { id: 'u5', name: 'Pedro', role: Role.KID, avatar: '👦', color: 'bg-green-400', pin: '0000' },
   { id: 'u6', name: 'Diego', role: Role.KID, avatar: '👶', color: 'bg-yellow-400', pin: '0000' },
@@ -33,7 +38,8 @@ const KEYS = {
   COMPLETIONS: 'st_completions',
   EXTRA_POINTS: 'st_extra_points',
   MESSAGES: 'st_messages',
-  EVENTS: 'st_events'
+  EVENTS: 'st_events',
+  TRANSACTIONS: 'st_transactions'
 };
 
 // API Base URL (relative since we serve from same origin in production)
@@ -58,6 +64,7 @@ export const DataService = {
             if(serverData.extraPoints) localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(serverData.extraPoints));
             if(serverData.messages) localStorage.setItem(KEYS.MESSAGES, JSON.stringify(serverData.messages));
             if(serverData.events) localStorage.setItem(KEYS.EVENTS, JSON.stringify(serverData.events));
+            if(serverData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(serverData.transactions));
         } else {
             // If server is empty, use initial data if local is also empty
             if (!localStorage.getItem(KEYS.USERS)) {
@@ -78,6 +85,9 @@ export const DataService = {
             if (!localStorage.getItem(KEYS.EVENTS)) {
                 localStorage.setItem(KEYS.EVENTS, JSON.stringify([]));
             }
+            if (!localStorage.getItem(KEYS.TRANSACTIONS)) {
+                localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
+            }
             // Save initial data to server
             DataService.syncToServer();
         }
@@ -97,7 +107,8 @@ export const DataService = {
           completions: JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]'),
           extraPoints: JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]'),
           messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]'),
-          events: JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]')
+          events: JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]'),
+          transactions: JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]')
       };
 
       try {
@@ -284,6 +295,53 @@ export const DataService = {
     }
   },
 
+  // Transactions / Shop
+  getTransactions: (userId: string): ShopTransaction[] => {
+      const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
+      return all.filter(t => t.userId === userId);
+  },
+
+  purchaseItem: (userId: string, itemId: string, cost: number): boolean => {
+      const stats = DataService.getUserStats(userId);
+      if (stats.spendablePoints < cost) return false;
+
+      // Add transaction
+      const allTransactions: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
+      allTransactions.push({
+          id: Date.now().toString(),
+          userId,
+          itemId,
+          cost,
+          timestamp: Date.now()
+      });
+      localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(allTransactions));
+
+      // Add to inventory
+      const users = DataService.getUsers();
+      const user = users.find(u => u.id === userId);
+      if (user) {
+          if (!user.inventory) user.inventory = [];
+          if (!user.inventory.includes(itemId)) {
+              user.inventory.push(itemId);
+          }
+          // If it's a base, auto-equip it if current base is undefined? No, let them equip.
+          // Save user
+          DataService.updateUser(user);
+      }
+
+      DataService.syncToServer();
+      return true;
+  },
+
+  updateAvatarConfig: (userId: string, config: AvatarConfig) => {
+      const users = DataService.getUsers();
+      const user = users.find(u => u.id === userId);
+      if (user) {
+          user.avatarConfig = config;
+          DataService.updateUser(user);
+      }
+  },
+
   // Aggregation
   getUserStats: (userId: string) => {
     const completions = DataService.getCompletions().filter(c => c.userId === userId);
@@ -303,11 +361,16 @@ export const DataService = {
       points += e.points;
     });
 
+    // Calculate Spent Points
+    const transactions = DataService.getTransactions(userId);
+    const spentPoints = transactions.reduce((sum, t) => sum + t.cost, 0);
+    const spendablePoints = points - spentPoints;
+
     const tasksCompletedCount = completions.length;
     
     const earnedBadges = BADGES.filter(b => b.condition(points, tasksCompletedCount));
 
-    return { points, tasksCompletedCount, earnedBadges, extraPointsList };
+    return { points, spendablePoints, tasksCompletedCount, earnedBadges, extraPointsList };
   },
 
   getLeaderboard: () => {
