@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Task, TaskCompletion, Role, Message, Event as AppEvent } from '../types';
+import { User, Task, TaskCompletion, Role, Message, Event as AppEvent, Reward } from '../types';
 import { DataService, getTodayString } from '../services/dataService';
 import { Icons } from './Icon';
 import Confetti from 'canvas-confetti';
@@ -25,9 +25,10 @@ const TAUNT_MESSAGES = [
 const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<AppEvent[]>([]); // New state for task-list events
+  const [rewards, setRewards] = useState<Reward[]>([]);
   const [completions, setCompletions] = useState<TaskCompletion[]>([]);
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
-  const [view, setView] = useState<'tasks' | 'ranking' | 'badges'>('tasks');
+  const [view, setView] = useState<'tasks' | 'ranking' | 'badges' | 'store'>('tasks');
   const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard(currentUser.familyId));
   // Separated scopes for ranking
   const [rankingScope, setRankingScope] = useState<'family' | 'global'>('family');
@@ -90,6 +91,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     );
     setEvents(todayEvents);
 
+    setRewards(DataService.getFamilyRewards(currentUser.familyId));
     setCompletions(DataService.getCompletions());
     const currentStats = DataService.getUserStats(currentUser.id);
     setStats(currentStats);
@@ -219,6 +221,25 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setTimeout(loadData, 500); 
   };
 
+  const handleBuyReward = (reward: Reward) => {
+      if (stats.spendablePoints < reward.cost) {
+          alert("¡No tienes suficientes puntos!");
+          return;
+      }
+      if (confirm(`¿Quieres comprar "${reward.name}" por ${reward.cost} puntos?`)) {
+          const success = DataService.redeemReward(currentUser.id, reward.id);
+          if (success) {
+               Confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#FF69B4', '#FFD700', '#FFFFFF']
+               });
+               loadData();
+          }
+      }
+  };
+
   // --- Avatar Logic ---
   const handleAvatarSelect = (newAvatar: string) => {
     if (onUserUpdate) {
@@ -338,6 +359,54 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   const weekDays = getWeekDays();
   const weekDayNames = ['D', 'L', 'M', 'X', 'J', 'V', 'S']; // 0 is Sunday
+
+  const renderStore = () => (
+      <div className="animate-fade-in pb-20">
+          <div className="bg-brand-pink/10 p-4 rounded-2xl mb-6 text-center border-2 border-brand-pink border-dashed">
+              <h2 className="text-xl font-bold text-brand-pink mb-1">Tu Saldo</h2>
+              <div className="text-4xl font-extrabold text-brand-pink flex items-center justify-center gap-2">
+                  <Icons.Star className="fill-current" /> {stats.spendablePoints}
+              </div>
+              <p className="text-xs text-brand-pink/70 mt-1">Puntos disponibles para gastar</p>
+          </div>
+
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <Icons.ShoppingBag className="text-brand-pink" /> Premios
+          </h2>
+
+          <div className="grid grid-cols-2 gap-4">
+              {rewards.map(reward => {
+                  const canAfford = stats.spendablePoints >= reward.cost;
+                  return (
+                      <button
+                          key={reward.id}
+                          onClick={() => handleBuyReward(reward)}
+                          disabled={!canAfford}
+                          className={`
+                            relative p-4 rounded-2xl shadow-sm border-b-4 text-center transition-all active:scale-95
+                            ${canAfford ? 'bg-white border-brand-pink/20 hover:border-brand-pink' : 'bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed'}
+                          `}
+                      >
+                          <div className="text-5xl mb-3 transform transition-transform hover:scale-110">{reward.icon}</div>
+                          <h3 className="font-bold text-gray-800 leading-tight mb-2 min-h-[2.5rem] flex items-center justify-center">{reward.name}</h3>
+                          <div className={`
+                            inline-block px-3 py-1 rounded-full text-xs font-bold
+                            ${canAfford ? 'bg-brand-pink text-white' : 'bg-gray-300 text-gray-500'}
+                          `}>
+                              {reward.cost} Puntos
+                          </div>
+                      </button>
+                  )
+              })}
+              {rewards.length === 0 && (
+                  <div className="col-span-2 text-center py-10 text-gray-400">
+                      <div className="text-4xl mb-2">🏪</div>
+                      <p>¡Dile a tus papis que añadan premios!</p>
+                  </div>
+              )}
+          </div>
+      </div>
+  );
 
   const renderWeekSelector = () => (
       <div className="flex justify-between items-center bg-white p-2 rounded-2xl shadow-sm mb-6 mx-2 overflow-x-auto no-scrollbar">
@@ -717,11 +786,18 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
             >
                 Insignias
             </button>
+            <button
+                onClick={() => setView('store')}
+                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all ${view === 'store' ? 'bg-brand-pink text-white shadow-md' : 'text-gray-400'}`}
+            >
+                Tienda
+            </button>
         </div>
 
         {view === 'tasks' && renderTasks()}
         {view === 'ranking' && renderRanking()}
         {view === 'badges' && renderBadges()}
+        {view === 'store' && renderStore()}
       </main>
 
       {/* Taunt Modal */}
