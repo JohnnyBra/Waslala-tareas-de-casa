@@ -436,8 +436,20 @@ export const DataService = {
     const stats = DataService.getUserStats(userId);
     if (stats.spendablePoints < reward.cost) return false;
 
-    // Add transaction
+    // Check Availability
     const allTransactions: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
+    const rewardTransactions = allTransactions.filter(t => t.itemId === rewardId);
+
+    if (reward.limitType === 'unique' && rewardTransactions.length > 0) {
+        return false; // Already bought by someone
+    }
+
+    if (reward.limitType === 'once_per_user') {
+        const myPurchase = rewardTransactions.find(t => t.userId === userId);
+        if (myPurchase) return false; // Already bought by this user
+    }
+
+    // Add transaction
     allTransactions.push({
         id: Date.now().toString(),
         userId,
@@ -458,6 +470,7 @@ export const DataService = {
   },
 
   getFamilyTransactions: (familyId: string): ShopTransaction[] => {
+      // Fetch all transactions for a family to check global limits
       const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
       const users = DataService.getFamilyUsers(familyId);
       const userIds = users.map(u => u.id);

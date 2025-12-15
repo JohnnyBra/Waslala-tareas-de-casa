@@ -96,6 +96,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [newRewardName, setNewRewardName] = useState('');
   const [newRewardCost, setNewRewardCost] = useState(50);
   const [newRewardIcon, setNewRewardIcon] = useState('🎁');
+  const [newRewardLimitType, setNewRewardLimitType] = useState<'unlimited' | 'once_per_user' | 'unique'>('unlimited');
 
   // Points Form State
   const [pointsAmount, setPointsAmount] = useState(10);
@@ -256,6 +257,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setNewRewardName('');
       setNewRewardCost(50);
       setNewRewardIcon('🎁');
+      setNewRewardLimitType('unlimited');
   }
 
   const handleCreateReward = (e: React.FormEvent) => {
@@ -267,7 +269,8 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
           familyId: currentUser.familyId,
           name: newRewardName,
           cost: Number(newRewardCost),
-          icon: newRewardIcon
+          icon: newRewardIcon,
+          limitType: newRewardLimitType
       };
 
       DataService.saveReward(reward);
@@ -575,8 +578,20 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                     </div>
                                     <div>
                                         <h3 className="font-bold text-gray-800 text-lg">{reward.name}</h3>
-                                        <div className="text-brand-pink font-bold bg-pink-100 inline-block px-2 py-0.5 rounded text-xs">
-                                            {reward.cost} Puntos
+                                        <div className="flex gap-2">
+                                            <div className="text-brand-pink font-bold bg-pink-100 inline-block px-2 py-0.5 rounded text-xs">
+                                                {reward.cost} Puntos
+                                            </div>
+                                            {reward.limitType === 'unique' && (
+                                                <div className="text-white font-bold bg-purple-500 inline-block px-2 py-0.5 rounded text-xs">
+                                                    Único
+                                                </div>
+                                            )}
+                                            {reward.limitType === 'once_per_user' && (
+                                                <div className="text-white font-bold bg-blue-500 inline-block px-2 py-0.5 rounded text-xs">
+                                                    1/Persona
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -986,6 +1001,24 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                 onChange={e => setNewRewardCost(Number(e.target.value))}
                                 className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-pink outline-none"
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Disponibilidad</label>
+                            <select
+                                value={newRewardLimitType}
+                                onChange={e => setNewRewardLimitType(e.target.value as any)}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-pink outline-none bg-white"
+                            >
+                                <option value="unlimited">Ilimitado (Siempre disponible)</option>
+                                <option value="once_per_user">Una vez por persona</option>
+                                <option value="unique">Único (Solo uno para todos)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {newRewardLimitType === 'unlimited' && "Cualquiera puede comprarlo las veces que quiera."}
+                                {newRewardLimitType === 'once_per_user' && "Cada niño puede comprarlo solo una vez."}
+                                {newRewardLimitType === 'unique' && "¡El primero que lo compre se lo queda! Desaparece para los demás."}
+                            </p>
                         </div>
 
                          <div>
