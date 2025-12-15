@@ -28,8 +28,9 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
   const [view, setView] = useState<'tasks' | 'ranking' | 'badges'>('tasks');
   const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard(currentUser.familyId));
+  // Separated scopes for ranking
+  const [rankingScope, setRankingScope] = useState<'family' | 'global'>('family');
   const [rankingTimeframe, setRankingTimeframe] = useState<'weekly' | 'monthly' | 'global'>('global');
-  const [interFamilyRanking, setInterFamilyRanking] = useState<{family: string, score: number}[]>([]);
 
   // Events State
   const [activeEvent, setActiveEvent] = useState<AppEvent | null>(null);
@@ -52,6 +53,10 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [allKids, setAllKids] = useState<User[]>([]);
 
+  // Derived state for available vaciles
+  const [vacilesInternalAvailable, setVacilesInternalAvailable] = useState(0);
+  const [vacilesExternalAvailable, setVacilesExternalAvailable] = useState(0);
+
 
   const todayStr = getTodayString(); // Today's date YYYY-MM-DD
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,10 +78,15 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     );
     setTasks(myTasks);
     setCompletions(DataService.getCompletions());
-    setStats(DataService.getUserStats(currentUser.id));
+    const currentStats = DataService.getUserStats(currentUser.id);
+    setStats(currentStats);
     setLeaderboard(DataService.getLeaderboard(currentUser.familyId));
     setMessages(DataService.getMessages(currentUser.id));
-    setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id)); // This includes kids from other families for Vacile
+    setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id));
+
+    // Update Vaciles Counters
+    setVacilesInternalAvailable(Math.floor(currentStats.tasksCompletedCount / 5) - (currentStats.vacilesSentInternal || 0));
+    setVacilesExternalAvailable(Math.floor(currentStats.tasksCompletedCount / 30) - (currentStats.vacilesSentExternal || 0));
   };
 
   const checkEvents = () => {
@@ -106,6 +116,13 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const handleCloseEvent = () => {
       if (activeEvent) {
           DataService.markEventAsRead(activeEvent.id, currentUser.id);
+
+          // Award points if event has them
+          if (activeEvent.points && activeEvent.points > 0) {
+              DataService.addExtraPoints(currentUser.id, activeEvent.points, `Evento: ${activeEvent.title}`);
+              loadData();
+          }
+
           setActiveEvent(null);
           // Check for more events after a short delay
           setTimeout(checkEvents, 500);
@@ -117,6 +134,12 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const handleToggleTask = (taskId: string) => {
     const dateStr = getSelectedDateString();
     
+    // Check if task date is today. If not, don't allow toggle.
+    if (dateStr !== todayStr) {
+        alert("Solo puedes marcar tareas del día de hoy.");
+        return;
+    }
+
     // Check completion BEFORE toggle to know if we are completing or undoing
     const isNowCompleted = !completions.some(c => c.taskId === taskId && c.userId === currentUser.id && c.date === dateStr);
     
@@ -131,29 +154,18 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
             });
         }
         
-        // Taunt Logic: Trigger modal if available
-        // Recalculate stats for immediate check
+        // Taunt Logic: Trigger modal if available (simplified check)
         const newTotalTasks = stats.tasksCompletedCount + 1;
-        const availableVaciles = Math.floor(newTotalTasks / 30) - (stats.vacilesSentCount || 0);
-
-        if (availableVaciles > 0) {
-            setTimeout(() => {
-                // Only auto-show if they haven't seen it recently, or maybe just let them click the button?
-                // The prompt says "Cada 30 tareas ... se le puede enviar".
-                // I will add a button in the header instead of auto-popup, but auto-popup is nice for engagement.
-                // Let's do auto popup if they just unlocked one.
-                if (newTotalTasks % 30 === 0) {
-                     setShowTauntModal(true);
-                }
-            }, 1000);
+        if (newTotalTasks % 30 === 0) {
+             setTimeout(() => setShowTauntModal(true), 1000);
+        } else if (newTotalTasks % 5 === 0) {
+             // Maybe notify about internal vacile available?
+             // For now just refresh data
         }
     }
 
     loadData();
   };
-
-  // --- Taunt System Logic ---
-  const availableVaciles = Math.floor(stats.tasksCompletedCount / 30) - (stats.vacilesSentCount || 0);
 
   const handleSendTaunt = () => {
       if (tauntTarget && tauntMessage) {
@@ -345,7 +357,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       const tasks = DataService.getTasks();
 
       // Internal Family Ranking
-      if (rankingTimeframe !== 'global') {
+      if (rankingScope === 'family') {
           const users = DataService.getFamilyUsers(currentUser.familyId).filter(u => u.role === Role.KID);
           return users.map(user => {
                 let points = 0;
@@ -380,8 +392,8 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
               let totalTasks = 0;
 
               familyKids.forEach(kid => {
-                  const kidCompletions = DataService.getCompletions().filter(c => c.userId === kid.id);
-                  const kidExtras = DataService.getExtraPoints().filter(e => e.userId === kid.id);
+                  const kidCompletions = filteredCompletions.filter(c => c.userId === kid.id);
+                  const kidExtras = filteredExtras.filter(e => e.userId === kid.id);
 
                   // Calculate raw points for kid
                   let kidPoints = 0;
@@ -416,17 +428,24 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       return (
         <div className="space-y-4 animate-fade-in">
         <h2 className="text-2xl font-bold text-brand-dark mb-4 flex items-center gap-2">
-            <Icons.Trophy className="text-brand-yellow" /> Ranking {rankingTimeframe === 'global' ? 'Global de Familias' : 'Familiar'}
+            <Icons.Trophy className="text-brand-yellow" /> Ranking
         </h2>
 
+        {/* Scope Selector */}
+        <div className="flex bg-gray-100 p-1 rounded-xl mb-2">
+             <button onClick={() => setRankingScope('family')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${rankingScope === 'family' ? 'bg-white shadow-sm text-brand-blue' : 'text-gray-500'}`}>Mi Familia</button>
+             <button onClick={() => setRankingScope('global')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${rankingScope === 'global' ? 'bg-white shadow-sm text-brand-blue' : 'text-gray-500'}`}>Entre Familias</button>
+        </div>
+
+        {/* Timeframe Selector */}
         <div className="flex bg-gray-200 p-1 rounded-xl mb-4">
              <button onClick={() => setRankingTimeframe('weekly')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'weekly' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Semanal</button>
              <button onClick={() => setRankingTimeframe('monthly')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'monthly' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Mensual</button>
-             <button onClick={() => setRankingTimeframe('global')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'global' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Global</button>
+             <button onClick={() => setRankingTimeframe('global')} className={`flex-1 py-1 rounded-lg text-xs font-bold ${rankingTimeframe === 'global' ? 'bg-white shadow-sm' : 'text-gray-500'}`}>Total</button>
         </div>
 
         {rankingData.map((item, index) => (
-            <div key={item.id} className={`bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden ${item.id === currentUser.familyId && rankingTimeframe === 'global' ? 'border-2 border-brand-blue' : ''}`}>
+            <div key={item.id} className={`bg-white rounded-2xl p-4 shadow-sm flex items-center gap-4 relative overflow-hidden ${item.id === currentUser.familyId && rankingScope === 'global' ? 'border-2 border-brand-blue' : ''}`}>
                 {index === 0 && <div className="absolute top-0 right-0 bg-brand-yellow text-xs font-bold px-2 py-1 rounded-bl-lg">LÍDER</div>}
             <div className="font-bold text-2xl text-gray-300 w-8">{index + 1}</div>
             <div className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden bg-gray-100 shadow-sm border-2 border-white">
@@ -437,16 +456,16 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                 )}
             </div>
             <div className="flex-1">
-                <div className="font-bold text-gray-800">{item.name} {item.id === currentUser.id && '(Tú)'} {item.id === currentUser.familyId && rankingTimeframe === 'global' && '(Tu Familia)'}</div>
+                <div className="font-bold text-gray-800">{item.name} {item.id === currentUser.id && '(Tú)'} {item.id === currentUser.familyId && rankingScope === 'global' && '(Tu Familia)'}</div>
                 <div className="text-xs text-gray-500">
-                    {rankingTimeframe === 'global' ? 'Puntos relativos' : `${item.tasksCompletedCount} tareas`}
+                    {rankingScope === 'global' ? 'Puntos relativos' : `${item.tasksCompletedCount} tareas`}
                 </div>
             </div>
             <div className="font-extrabold text-brand-blue text-xl">{item.points} pts</div>
             </div>
         ))}
 
-        {rankingTimeframe === 'global' && (
+        {rankingScope === 'global' && (
             <div className="text-center text-xs text-gray-400 mt-2 italic">
                 * Puntos relativos = Total puntos familia / Número de niños
             </div>
@@ -580,14 +599,14 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                  )}
                </button>
 
-               {/* Vacile Button (Visible if > 0) */}
-               {availableVaciles > 0 && (
+               {/* Vacile Button (Combined) */}
+               {(vacilesInternalAvailable > 0 || vacilesExternalAvailable > 0) && (
                    <button
                        onClick={() => setShowTauntModal(true)}
                        className="bg-brand-pink text-white px-4 py-2 rounded-full font-bold shadow-lg animate-bounce flex items-center gap-2"
                    >
                        <Icons.MessageCircle size={20} />
-                       {availableVaciles}
+                       {vacilesInternalAvailable + vacilesExternalAvailable}
                    </button>
                )}
 
@@ -633,19 +652,42 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
              <div className="bg-white rounded-3xl p-6 w-full max-w-sm animate-fade-in-up">
                  <div className="text-center mb-6">
                      <Icons.MessageCircle size={48} className="text-brand-pink mx-auto mb-2" />
-                     <h3 className="font-bold text-2xl text-brand-dark">¡Vacile Disponible! ({availableVaciles})</h3>
-                     <p className="text-gray-500">Elige una "víctima" de otra familia 😈</p>
+                     <h3 className="font-bold text-2xl text-brand-dark">¡Hora de Vacilar! 😈</h3>
+                     <div className="flex gap-4 justify-center mt-2 text-sm">
+                         <div className="bg-gray-100 px-3 py-1 rounded-full">
+                             Familia: <span className="font-bold text-brand-pink">{vacilesInternalAvailable}</span>
+                         </div>
+                         <div className="bg-gray-100 px-3 py-1 rounded-full">
+                             Fuera: <span className="font-bold text-brand-pink">{vacilesExternalAvailable}</span>
+                         </div>
+                     </div>
                  </div>
                  
                  <div className="space-y-4">
                      <div>
                          <label className="block text-sm font-bold text-gray-600 mb-2">¿A quién se lo envías?</label>
                          <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                             {allKids.filter(k => k.familyId !== currentUser.familyId).length === 0 && (
-                                 <p className="text-sm text-gray-400 italic">No hay niños en otras familias...</p>
-                             )}
-                             {allKids.filter(k => k.familyId !== currentUser.familyId).map(kid => {
-                                 // We don't have direct access to Family Name here easily without looking it up, but that's fine.
+                             {/* Internal Family Members */}
+                             {vacilesInternalAvailable > 0 && allKids.filter(k => k.familyId === currentUser.familyId).map(kid => (
+                                 <button
+                                    key={kid.id}
+                                    onClick={() => setTauntTarget(kid.id)}
+                                    className={`flex flex-col items-center min-w-[5rem] p-2 rounded-xl transition-all border-2 ${tauntTarget === kid.id ? 'bg-brand-pink text-white border-brand-pink' : 'bg-white border-gray-100'}`}
+                                 >
+                                    <div className="text-3xl mb-1">
+                                        {kid.avatar.startsWith('data:') ? (
+                                            <div className="w-10 h-10 rounded-full overflow-hidden">
+                                                <img src={kid.avatar} className="w-full h-full object-cover"/>
+                                            </div>
+                                        ) : kid.avatar}
+                                    </div>
+                                    <span className="text-xs font-bold truncate w-full text-center">{kid.name}</span>
+                                    <span className="text-[10px] text-gray-400 truncate w-full text-center">Familia</span>
+                                 </button>
+                             ))}
+
+                             {/* External Family Members */}
+                             {vacilesExternalAvailable > 0 && allKids.filter(k => k.familyId !== currentUser.familyId).map(kid => {
                                  const families = DataService.getFamilies();
                                  const familyName = families.find(f => f.id === kid.familyId)?.name;
 
@@ -666,6 +708,12 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                     <span className="text-[10px] text-gray-400 truncate w-full text-center">{familyName}</span>
                                  </button>
                              )})}
+
+                             {(vacilesInternalAvailable === 0 && vacilesExternalAvailable === 0) && (
+                                 <div className="w-full text-center text-gray-400 text-sm py-4">
+                                     ¡No tienes vaciles disponibles! Completa más tareas.
+                                 </div>
+                             )}
                          </div>
                      </div>
 
@@ -772,6 +820,11 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                       <p className="text-gray-600 font-medium text-lg leading-relaxed">
                           {activeEvent.description}
                       </p>
+                      {activeEvent.points && (
+                          <div className="mt-4 bg-brand-yellow/20 text-brand-dark px-4 py-2 rounded-xl font-bold inline-block">
+                              🎁 +{activeEvent.points} puntos extra
+                          </div>
+                      )}
                   </div>
 
                   <button

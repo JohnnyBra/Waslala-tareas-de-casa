@@ -87,6 +87,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [newEventDescription, setNewEventDescription] = useState('');
   const [newEventDate, setNewEventDate] = useState(getTodayString());
   const [newEventStyle, setNewEventStyle] = useState<'default' | 'golden' | 'sparkle'>('default');
+  const [newEventPoints, setNewEventPoints] = useState(0);
   const [newEventAssignees, setNewEventAssignees] = useState<string[]>([]);
 
   // Points Form State
@@ -239,6 +240,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setNewEventDescription('');
       setNewEventDate(getTodayString());
       setNewEventStyle('default');
+      setNewEventPoints(0);
       setNewEventAssignees([]);
   }
 
@@ -254,7 +256,8 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
           type: 'popup',
           style: newEventStyle,
           assignedTo: newEventAssignees,
-          readBy: []
+          readBy: [],
+          points: newEventPoints > 0 ? newEventPoints : undefined
       };
 
       DataService.saveEvent(event);
@@ -771,6 +774,17 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                     <option value="sparkle">Brillos ✨</option>
                                 </select>
                              </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Puntos de Regalo (Opcional)</label>
+                            <input
+                                type="number"
+                                value={newEventPoints}
+                                onChange={e => setNewEventPoints(Number(e.target.value))}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none"
+                                placeholder="0"
+                            />
                         </div>
 
                         <div>
