@@ -11,6 +11,40 @@ interface Props {
 const AVATAR_OPTIONS = ['👨🏻', '👩🏻', '👴', '👵', '🧑', '👧', '👦', '👶', '🐶', '🐱'];
 const TASK_ICONS = ['🧹', '🛏️', '🧸', '📚', '🍽️', '🚿', '🦷', '👗', '🗑️', '🪴', '🐕', '🐈', '👕', '🧺', '🧽', '🚶', '🎒', '🧩', '🎨', '🎷'];
 
+// Date Helpers
+const addDays = (dateStr: string, days: number): string => {
+    // Append time to ensure local date parsing if needed, but simple YYYY-MM-DD usually parses as UTC.
+    // However, since we want to manipulate "calendar days", we can split and use constructor.
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + days);
+    // Return YYYY-MM-DD
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    const newD = String(date.getDate()).padStart(2, '0');
+    return `${newY}-${newM}-${newD}`;
+};
+
+const formatDate = (dateStr: string): string => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+};
+
+// Start of week (Monday)
+const getStartOfWeek = (dateStr: string): string => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    const day = date.getDay(); // 0 (Sun) to 6 (Sat)
+    const diff = date.getDate() - (day === 0 ? 6 : day - 1);
+    date.setDate(diff);
+
+    const newY = date.getFullYear();
+    const newM = String(date.getMonth() + 1).padStart(2, '0');
+    const newD = String(date.getDate()).padStart(2, '0');
+    return `${newY}-${newM}-${newD}`;
+};
+
 const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -21,7 +55,14 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showPointsModal, setShowPointsModal] = useState<string | null>(null); // userId or null
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [view, setView] = useState<'status' | 'manage'>('status');
+  const [view, setView] = useState<'status' | 'weekly' | 'manage'>('status');
+
+  // Date State
+  const [selectedDate, setSelectedDate] = useState(getTodayString());
+
+  // Message State
+  const [showMessageModal, setShowMessageModal] = useState<string | null>(null); // userId
+  const [messageContent, setMessageContent] = useState('');
 
   // PIN Change State
   const [newPin, setNewPin] = useState('');
@@ -30,7 +71,6 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const kids = users.filter(u => u.role === Role.KID);
-  const today = getTodayString();
 
   // Task Form State
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -45,13 +85,18 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   useEffect(() => {
     loadData();
-  }, [view]);
+  }, [view, selectedDate]);
 
   const loadData = () => {
     setTasks(DataService.getTasks());
     setUsers(DataService.getUsers());
     setCompletions(DataService.getCompletions());
     setExtraPoints(DataService.getExtraPoints());
+  };
+
+  const changeDate = (days: number) => {
+      const jump = view === 'weekly' ? days * 7 : days;
+      setSelectedDate(prev => addDays(prev, jump));
   };
 
   const handleCreateTask = (e: React.FormEvent) => {
@@ -92,7 +137,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   const handleUndoTask = (taskId: string, userId: string) => {
       if(confirm('¿Marcar tarea como no realizada? Se restarán los puntos.')) {
-          DataService.removeCompletion(taskId, userId, today);
+          DataService.removeCompletion(taskId, userId, selectedDate);
           loadData();
       }
   };
@@ -105,6 +150,16 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
           setPointsAmount(10);
           setPointsReason('');
           loadData();
+      }
+  };
+
+  const handleSendMessage = (e: React.FormEvent) => {
+      e.preventDefault();
+      if(showMessageModal && messageContent.trim()) {
+          DataService.sendMessage(currentUser.id, showMessageModal, messageContent);
+          setShowMessageModal(null);
+          setMessageContent('');
+          alert('Mensaje enviado');
       }
   };
 
@@ -173,13 +228,32 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const dayLabels = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];
   const displayDays = [1, 2, 3, 4, 5, 6, 0]; // Indices in order: Mon, Tue... Sun
 
+  // Date Controls Component
+  const DateControls = () => (
+      <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+          <button onClick={() => changeDate(-1)} className="p-1 hover:bg-white rounded"><Icons.ChevronLeft size={20}/></button>
+          <span className="font-bold px-2 text-sm md:text-base min-w-[120px] text-center capitalize">{formatDate(selectedDate)}</span>
+          <button onClick={() => changeDate(1)} className="p-1 hover:bg-white rounded"><Icons.ChevronRight size={20}/></button>
+          <button onClick={() => setSelectedDate(getTodayString())} className="text-xs bg-white px-2 py-1 rounded ml-1 text-gray-500 font-bold">Hoy</button>
+      </div>
+  );
+
   const renderStatus = () => (
     <div className="space-y-6">
-        <h2 className="text-xl font-bold text-gray-800">Estado de Hoy ({today})</h2>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Resumen Diario</h2>
+            <DateControls />
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2">
             {kids.map(kid => {
-                const kidTasks = tasks.filter(t => t.assignedTo.includes(kid.id) && t.recurrence.includes(new Date().getDay()));
-                const completedCount = completions.filter(c => c.userId === kid.id && c.date === today).length;
+                // Determine day of week for selectedDate
+                const [y, m, d] = selectedDate.split('-').map(Number);
+                const dateObj = new Date(y, m - 1, d);
+                const dayOfWeek = dateObj.getDay();
+
+                const kidTasks = tasks.filter(t => t.assignedTo.includes(kid.id) && t.recurrence.includes(dayOfWeek));
+                const completedCount = completions.filter(c => c.userId === kid.id && c.date === selectedDate).length;
                 const progress = kidTasks.length > 0 ? (completedCount / kidTasks.length) * 100 : 0;
                 
                 // Calculate total current points for display
@@ -201,12 +275,21 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                     <span className="text-xs text-brand-blue font-bold">{stats.points} pts totales</span>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => setShowPointsModal(kid.id)}
-                                className="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1"
-                            >
-                                <Icons.Plus size={12} /> Ajustar Puntos
-                            </button>
+                            <div className="flex gap-1">
+                                <button
+                                    onClick={() => setShowMessageModal(kid.id)}
+                                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 p-2 rounded-lg"
+                                    title="Enviar Mensaje"
+                                >
+                                    <Icons.MessageCircle size={16} />
+                                </button>
+                                <button
+                                    onClick={() => setShowPointsModal(kid.id)}
+                                    className="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1"
+                                >
+                                    <Icons.Plus size={12} /> Ajustar Puntos
+                                </button>
+                            </div>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-4">
                             <div className="h-full bg-brand-green transition-all duration-500" style={{ width: `${progress}%` }}></div>
@@ -214,7 +297,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                         
                         <div className="space-y-2">
                             {kidTasks.map(t => {
-                                const isDone = completions.some(c => c.taskId === t.id && c.userId === kid.id && c.date === today);
+                                const isDone = completions.some(c => c.taskId === t.id && c.userId === kid.id && c.date === selectedDate);
                                 return (
                                     <div key={t.id} className="flex items-center justify-between text-sm text-gray-600">
                                         <div className="flex items-center gap-2">
@@ -236,7 +319,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                     </div>
                                 )
                             })}
-                            {kidTasks.length === 0 && <span className="text-xs text-gray-400 italic">Sin tareas hoy</span>}
+                            {kidTasks.length === 0 && <span className="text-xs text-gray-400 italic">Sin tareas este día</span>}
                         </div>
                     </div>
                 );
@@ -244,6 +327,79 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         </div>
     </div>
   );
+
+  const renderWeekly = () => {
+      const startOfWeek = getStartOfWeek(selectedDate);
+      const weekDates = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek, i));
+      const endOfWeek = weekDates[6];
+
+      return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <h2 className="text-xl font-bold text-gray-800">Resumen Semanal</h2>
+                <DateControls />
+            </div>
+            <div className="text-sm text-gray-500 mb-4 text-center md:text-left">
+                Semana del {formatDate(startOfWeek)} al {formatDate(endOfWeek)}
+            </div>
+
+            <div className="grid gap-4">
+                {kids.map(kid => {
+                    // Weekly stats calculation
+                    let weeklyPoints = 0;
+                    let weeklyTasksCompleted = 0;
+
+                    const weekCompletions = completions.filter(c =>
+                        c.userId === kid.id &&
+                        c.date >= startOfWeek &&
+                        c.date <= endOfWeek
+                    );
+
+                    weekCompletions.forEach(c => {
+                        const task = tasks.find(t => t.id === c.taskId);
+                        if(task) weeklyPoints += task.points;
+                    });
+                    weeklyTasksCompleted = weekCompletions.length;
+
+                    // Extra points in range
+                    const weekExtras = extraPoints.filter(e => {
+                        const d = new Date(e.timestamp).toISOString().split('T')[0];
+                        return e.userId === kid.id && d >= startOfWeek && d <= endOfWeek;
+                    });
+
+                    weekExtras.forEach(e => weeklyPoints += e.points);
+
+                    return (
+                        <div key={kid.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center gap-4">
+                             <div className={`w-14 h-14 rounded-full flex items-center justify-center bg-gray-100 border overflow-hidden shrink-0`}>
+                                     {kid.avatar.startsWith('data:') || kid.avatar.startsWith('/uploads/') ? (
+                                        <img src={kid.avatar} className="w-full h-full object-cover"/>
+                                     ) : (
+                                         <span className="text-2xl">{kid.avatar}</span>
+                                     )}
+                            </div>
+                            <div className="flex-1 text-center md:text-left">
+                                <h3 className="font-bold text-lg">{kid.name}</h3>
+                                <div className="text-sm text-gray-500">Ha completado {weeklyTasksCompleted} tareas esta semana</div>
+                            </div>
+                            <div className="bg-brand-blue/10 text-brand-blue px-4 py-2 rounded-xl font-bold text-xl min-w-[100px] text-center">
+                                {weeklyPoints} pts
+                            </div>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <button
+                                    onClick={() => setShowMessageModal(kid.id)}
+                                    className="flex-1 md:flex-none bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600 flex items-center justify-center gap-2"
+                                >
+                                    <Icons.Send size={16} /> Motivar
+                                </button>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+      );
+  };
 
   const renderManage = () => (
       <div className="space-y-4">
@@ -301,22 +457,30 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         </header>
 
         <div className="p-4 max-w-4xl mx-auto">
-            <div className="flex gap-2 mb-6 bg-gray-200 p-1 rounded-xl">
+            <div className="flex gap-2 mb-6 bg-gray-200 p-1 rounded-xl overflow-x-auto">
                 <button 
                     onClick={() => setView('status')}
-                    className={`flex-1 py-2 rounded-lg font-bold text-sm ${view === 'status' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
+                    className={`flex-1 py-2 px-2 whitespace-nowrap rounded-lg font-bold text-sm ${view === 'status' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
                 >
                     Resumen Diario
                 </button>
+                <button
+                    onClick={() => setView('weekly')}
+                    className={`flex-1 py-2 px-2 whitespace-nowrap rounded-lg font-bold text-sm ${view === 'weekly' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
+                >
+                    Resumen Semanal
+                </button>
                 <button 
                     onClick={() => setView('manage')}
-                    className={`flex-1 py-2 rounded-lg font-bold text-sm ${view === 'manage' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
+                    className={`flex-1 py-2 px-2 whitespace-nowrap rounded-lg font-bold text-sm ${view === 'manage' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
                 >
                     Editar Tareas
                 </button>
             </div>
 
-            {view === 'status' ? renderStatus() : renderManage()}
+            {view === 'status' && renderStatus()}
+            {view === 'weekly' && renderWeekly()}
+            {view === 'manage' && renderManage()}
         </div>
 
         {/* Add Task Modal */}
@@ -479,6 +643,59 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                                 className="flex-1 bg-brand-yellow text-brand-dark font-bold py-3 rounded-xl shadow-md"
                             >
                                 Guardar
+                            </button>
+                         </div>
+                     </form>
+                </div>
+            </div>
+        )}
+
+        {/* Message Modal */}
+        {showMessageModal && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-sm animate-fade-in-up">
+                     <h3 className="font-bold text-xl text-gray-800 mb-4 flex items-center gap-2">
+                         <Icons.MessageCircle className="text-brand-blue" />
+                         Enviar Mensaje
+                     </h3>
+                     <form onSubmit={handleSendMessage}>
+                         <div className="mb-4">
+                             <label className="block text-sm text-gray-500 mb-2">Escribe algo bonito:</label>
+                             <textarea
+                                required
+                                value={messageContent}
+                                onChange={e => setMessageContent(e.target.value)}
+                                placeholder="¡Muy bien hecho hoy! Estoy orgulloso de ti."
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-blue outline-none h-32"
+                             />
+                         </div>
+
+                         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+                             {['¡Felicidades! 🎉', '¡Buen trabajo! 💪', '¡Te quiero! ❤️', '¡Ánimo! 🚀'].map(text => (
+                                 <button
+                                    key={text}
+                                    type="button"
+                                    onClick={() => setMessageContent(text)}
+                                    className="bg-gray-100 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap hover:bg-gray-200"
+                                 >
+                                     {text}
+                                 </button>
+                             ))}
+                         </div>
+
+                         <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setShowMessageModal(null)}
+                                className="flex-1 bg-gray-100 text-gray-500 font-bold py-3 rounded-xl"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 bg-brand-blue text-white font-bold py-3 rounded-xl shadow-md"
+                            >
+                                Enviar
                             </button>
                          </div>
                      </form>

@@ -226,6 +226,7 @@ export const DataService = {
   },
 
   sendMessage: (fromUserId: string, toUserId: string, content: string) => {
+      // Send a new motivation message
       const allMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
       const newMsg: Message = {
           id: Date.now().toString(),
