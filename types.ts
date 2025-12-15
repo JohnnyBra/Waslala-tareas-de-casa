@@ -3,11 +3,39 @@ export enum Role {
   KID = 'KID'
 }
 
+export type AvatarItemType = 'base' | 'top' | 'bottom' | 'shoes' | 'accessory';
+
+export interface AvatarItem {
+  id: string;
+  type: AvatarItemType;
+  name: string;
+  cost: number;
+  svg: string; // Reference to the SVG component key
+}
+
+export interface AvatarConfig {
+  baseId?: string;
+  topId?: string;
+  bottomId?: string;
+  shoesId?: string;
+  accessoryId?: string;
+}
+
+export interface ShopTransaction {
+  id: string;
+  userId: string;
+  itemId: string;
+  cost: number;
+  timestamp: number;
+}
+
 export interface User {
   id: string;
   name: string;
   role: Role;
   avatar: string; // Emoji or URL
+  avatarConfig?: AvatarConfig;
+  inventory?: string[]; // IDs of owned items
   color: string;
   pin: string; // Simple password
 }

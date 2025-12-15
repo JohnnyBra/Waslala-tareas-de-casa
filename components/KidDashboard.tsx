@@ -3,6 +3,8 @@ import { User, Task, TaskCompletion, Role, Message, Event as AppEvent } from '..
 import { DataService, getTodayString } from '../services/dataService';
 import { Icons } from './Icon';
 import Confetti from 'canvas-confetti';
+import Avatar from './Avatar';
+import AvatarEditor from './AvatarEditor';
 
 interface Props {
   currentUser: User;
@@ -36,6 +38,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   
   // Modals & User Update State
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showAvatarEditor, setShowAvatarEditor] = useState(false);
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [pinMessage, setPinMessage] = useState('');
@@ -203,6 +206,16 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         };
         reader.readAsDataURL(file);
     }
+  };
+
+  const handleAvatarUpdate = () => {
+      // Force reload stats/user data
+      setStats(DataService.getUserStats(currentUser.id));
+      if (onUserUpdate) {
+          // Re-fetch user to get updated config/inventory
+          const updatedUser = DataService.getUsers().find(u => u.id === currentUser.id);
+          if (updatedUser) onUserUpdate(updatedUser);
+      }
   };
 
   // --- Password Logic ---
@@ -482,6 +495,11 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
               </div>
            </div>
            
+           {/* My Character / Avatar */}
+            <div className="absolute top-10 left-1/2 transform -translate-x-1/2 flex flex-col items-center pointer-events-none opacity-20 scale-150 origin-top">
+                 <Avatar config={currentUser.avatarConfig} size={150} />
+            </div>
+
            <div className="flex gap-2">
                {/* Inbox Button */}
                <button 
@@ -697,8 +715,16 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
                 {/* Avatar Section */}
                 <div className="mb-8">
-                    <h4 className="font-bold text-gray-600 mb-3 text-sm uppercase tracking-wider">Cambiar Avatar</h4>
+                    <h4 className="font-bold text-gray-600 mb-3 text-sm uppercase tracking-wider">Tu Personaje</h4>
                     
+                    <button
+                        onClick={() => { setShowAvatarEditor(true); setShowProfileModal(false); }}
+                        className="w-full bg-purple-600 text-white font-bold py-3 rounded-xl mb-4 flex items-center justify-center gap-2 hover:bg-purple-700 shadow-md"
+                    >
+                        👕 Personalizar Avatar
+                    </button>
+
+                    <h4 className="font-bold text-gray-600 mb-3 text-sm uppercase tracking-wider">O Usar Emoji / Foto</h4>
                     {/* File Upload Button with Trash */}
                     <div className="flex justify-center mb-4 gap-3">
                         <button 
@@ -786,6 +812,14 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                 </button>
             </div>
         </div>
+      )}
+
+      {showAvatarEditor && (
+          <AvatarEditor
+            user={currentUser}
+            onClose={() => setShowAvatarEditor(false)}
+            onUpdate={handleAvatarUpdate}
+          />
       )}
     </div>
   );
