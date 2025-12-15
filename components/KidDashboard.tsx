@@ -249,41 +249,16 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && onUserUpdate) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                // Resize image to avoid localStorage limits (Max 150x150)
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                const maxSize = 150;
-                let width = img.width;
-                let height = img.height;
-
-                if (width > height) {
-                    if (width > maxSize) {
-                        height *= maxSize / width;
-                        width = maxSize;
-                    }
-                } else {
-                    if (height > maxSize) {
-                        width *= maxSize / height;
-                        height = maxSize;
-                    }
-                }
-                canvas.width = width;
-                canvas.height = height;
-                ctx?.drawImage(img, 0, 0, width, height);
-                
-                const base64 = canvas.toDataURL('image/jpeg', 0.8);
-                onUserUpdate({ ...currentUser, avatar: base64 }); // Save Base64 as avatar
-            };
-            img.src = e.target?.result as string;
-        };
-        reader.readAsDataURL(file);
+        try {
+            const uploadedUrl = await DataService.uploadImage(file);
+            onUserUpdate({ ...currentUser, avatar: uploadedUrl });
+        } catch (e) {
+            console.error("Failed to upload image", e);
+            alert("Error al subir la imagen. Inténtalo de nuevo.");
+        }
     }
   };
 

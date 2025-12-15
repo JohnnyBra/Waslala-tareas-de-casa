@@ -34,26 +34,35 @@ export const BADGES: Badge[] = [
   { id: 'b4', name: 'Leyenda', description: 'Completa 100 tareas', icon: '👑', condition: (_, t) => t >= 100 },
 ];
 
-// Storage Keys
-const KEYS = {
-  FAMILIES: 'st_families',
-  USERS: 'st_users',
-  TASKS: 'st_tasks',
-  COMPLETIONS: 'st_completions',
-  EXTRA_POINTS: 'st_extra_points',
-  MESSAGES: 'st_messages',
-  EVENTS: 'st_events',
-  TRANSACTIONS: 'st_transactions',
-  REWARDS: 'st_rewards',
-  LAST_UPDATED: 'st_last_updated',
-  LAST_SYNCED: 'st_last_synced'
-};
-
 // API Base URL
 const API_BASE = '/api';
 
 // Helper to get today's date string YYYY-MM-DD
 export const getTodayString = () => new Date().toISOString().split('T')[0];
+
+interface AppState {
+    families: Family[];
+    users: User[];
+    tasks: Task[];
+    completions: TaskCompletion[];
+    extraPoints: ExtraPointEntry[];
+    messages: Message[];
+    events: Event[];
+    transactions: ShopTransaction[];
+    rewards: Reward[];
+}
+
+let state: AppState = {
+    families: [],
+    users: [],
+    tasks: [],
+    completions: [],
+    extraPoints: [],
+    messages: [],
+    events: [],
+    transactions: [],
+    rewards: []
+};
 
 // Synchronization State
 let syncTimeout: any = null;
@@ -61,86 +70,42 @@ let isSyncing = false;
 let pendingSync = false;
 
 export const DataService = {
-  // Initialization: Load from server and populate localStorage
+  // Initialization: Load from server
   init: async () => {
     try {
-        // Check for unsaved local changes
-        const lastUpdated = parseInt(localStorage.getItem(KEYS.LAST_UPDATED) || '0');
-        const lastSynced = parseInt(localStorage.getItem(KEYS.LAST_SYNCED) || '0');
-
-        // If we have local changes not yet synced (and lastUpdated is reasonably recent/valid)
-        if (lastUpdated > lastSynced && lastUpdated > 0) {
-            console.log("Found unsaved local changes, syncing to server...", { lastUpdated, lastSynced });
-            await DataService.processSync();
-            // We assume local state is now the authority.
-            return;
-        }
-
         const response = await fetch(`${API_BASE}/data`);
         const serverData = await response.json();
 
         if (serverData && Object.keys(serverData).length > 0) {
-            // Load server data into localStorage
-            if(serverData.families) localStorage.setItem(KEYS.FAMILIES, JSON.stringify(serverData.families));
-            if(serverData.users) localStorage.setItem(KEYS.USERS, JSON.stringify(serverData.users));
-            if(serverData.tasks) localStorage.setItem(KEYS.TASKS, JSON.stringify(serverData.tasks));
-            if(serverData.completions) localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(serverData.completions));
-            if(serverData.extraPoints) localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(serverData.extraPoints));
-            if(serverData.messages) localStorage.setItem(KEYS.MESSAGES, JSON.stringify(serverData.messages));
-            if(serverData.events) localStorage.setItem(KEYS.EVENTS, JSON.stringify(serverData.events));
-            if(serverData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(serverData.transactions));
-            if(serverData.rewards) localStorage.setItem(KEYS.REWARDS, JSON.stringify(serverData.rewards));
-
-            // Sync timestamps
-            const now = Date.now().toString();
-            localStorage.setItem(KEYS.LAST_SYNCED, now);
-            localStorage.setItem(KEYS.LAST_UPDATED, now);
+            state.families = serverData.families || [];
+            state.users = serverData.users || [];
+            state.tasks = serverData.tasks || [];
+            state.completions = serverData.completions || [];
+            state.extraPoints = serverData.extraPoints || [];
+            state.messages = serverData.messages || [];
+            state.events = serverData.events || [];
+            state.transactions = serverData.transactions || [];
+            state.rewards = serverData.rewards || [];
         } else {
-            // If server is empty, use initial data if local is also empty
-            if (!localStorage.getItem(KEYS.FAMILIES)) {
-                localStorage.setItem(KEYS.FAMILIES, JSON.stringify(INITIAL_FAMILIES));
-            }
-            if (!localStorage.getItem(KEYS.USERS)) {
-                localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
-            }
-            if (!localStorage.getItem(KEYS.TASKS)) {
-                localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-            }
-            if (!localStorage.getItem(KEYS.COMPLETIONS)) {
-                localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify([]));
-            }
-            if (!localStorage.getItem(KEYS.EXTRA_POINTS)) {
-                localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify([]));
-            }
-            if (!localStorage.getItem(KEYS.MESSAGES)) {
-                localStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
-            }
-            if (!localStorage.getItem(KEYS.EVENTS)) {
-                localStorage.setItem(KEYS.EVENTS, JSON.stringify([]));
-            }
-            if (!localStorage.getItem(KEYS.TRANSACTIONS)) {
-                localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
-            }
-            if (!localStorage.getItem(KEYS.REWARDS)) {
-                localStorage.setItem(KEYS.REWARDS, JSON.stringify([]));
-            }
+            // Initialize with defaults if empty
+            if (state.families.length === 0) state.families = INITIAL_FAMILIES;
+            if (state.users.length === 0) state.users = INITIAL_USERS;
+            if (state.tasks.length === 0) state.tasks = INITIAL_TASKS;
+
             // Save initial data to server
             DataService.syncToServer();
         }
     } catch (e) {
-        console.error("Failed to load data from server, falling back to local storage", e);
-        // Fallback init
-        if (!localStorage.getItem(KEYS.FAMILIES)) localStorage.setItem(KEYS.FAMILIES, JSON.stringify(INITIAL_FAMILIES));
-        if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify(INITIAL_USERS));
-        if (!localStorage.getItem(KEYS.TASKS)) localStorage.setItem(KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
+        console.error("Failed to load data from server", e);
+        // Fallback to initial data if server fails
+        if (state.families.length === 0) state.families = INITIAL_FAMILIES;
+        if (state.users.length === 0) state.users = INITIAL_USERS;
+        if (state.tasks.length === 0) state.tasks = INITIAL_TASKS;
     }
   },
 
   // Public sync request (debounced)
   syncToServer: () => {
-      // Mark local state as updated
-      localStorage.setItem(KEYS.LAST_UPDATED, Date.now().toString());
-
       if (syncTimeout) {
           clearTimeout(syncTimeout);
       }
@@ -148,7 +113,7 @@ export const DataService = {
       // Debounce sync request
       syncTimeout = setTimeout(() => {
           DataService.processSync();
-      }, 2000); // 2 seconds debounce
+      }, 500); // 0.5 seconds debounce
   },
 
   // Actual sync process
@@ -159,32 +124,17 @@ export const DataService = {
       }
 
       isSyncing = true;
-      const data = {
-          families: JSON.parse(localStorage.getItem(KEYS.FAMILIES) || '[]'),
-          users: JSON.parse(localStorage.getItem(KEYS.USERS) || '[]'),
-          tasks: JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]'),
-          completions: JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]'),
-          extraPoints: JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]'),
-          messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]'),
-          events: JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]'),
-          transactions: JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]'),
-          rewards: JSON.parse(localStorage.getItem(KEYS.REWARDS) || '[]')
-      };
 
       try {
           await fetch(`${API_BASE}/data`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(data),
-              keepalive: true // Important for background sync on tab close
+              body: JSON.stringify(state),
+              keepalive: true
           });
-
-          // On success, mark as synced
-          localStorage.setItem(KEYS.LAST_SYNCED, Date.now().toString());
 
       } catch (e) {
           console.error("Failed to sync to server", e);
-          // Retry? For now, we rely on the next sync or reload/init logic
       } finally {
           isSyncing = false;
           if (pendingSync) {
@@ -218,87 +168,77 @@ export const DataService = {
 
   // Families
   getFamilies: (): Family[] => {
-    return JSON.parse(localStorage.getItem(KEYS.FAMILIES) || '[]');
+    return state.families;
   },
 
   addFamily: (name: string) => {
-      const families = DataService.getFamilies();
       const newFamily: Family = {
           id: 'f' + Date.now(),
           name
       };
-      families.push(newFamily);
-      localStorage.setItem(KEYS.FAMILIES, JSON.stringify(families));
+      state.families.push(newFamily);
       DataService.syncToServer();
       return newFamily;
   },
 
   // Users
   getUsers: (): User[] => {
-    return JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
+    return state.users;
   },
 
   // Get users for a specific family
   getFamilyUsers: (familyId: string): User[] => {
-      return DataService.getUsers().filter(u => u.familyId === familyId);
+      return state.users.filter(u => u.familyId === familyId);
   },
 
   createUser: (user: User) => {
-      const users = DataService.getUsers();
-      users.push(user);
-      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      state.users.push(user);
       DataService.syncToServer();
   },
 
   updateUser: (updatedUser: User) => {
-    const users = DataService.getUsers();
-    const index = users.findIndex(u => u.id === updatedUser.id);
+    const index = state.users.findIndex(u => u.id === updatedUser.id);
     if (index !== -1) {
-      users[index] = updatedUser;
-      localStorage.setItem(KEYS.USERS, JSON.stringify(users));
+      state.users[index] = updatedUser;
       DataService.syncToServer();
     }
   },
 
   // Tasks
   getTasks: (): Task[] => {
-    return JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]');
+    return state.tasks;
   },
 
   getFamilyTasks: (familyId: string): Task[] => {
-      return DataService.getTasks().filter(t => t.familyId === familyId);
+      return state.tasks.filter(t => t.familyId === familyId);
   },
   
   saveTask: (task: Task) => {
-    const tasks = DataService.getTasks();
-    const existingIndex = tasks.findIndex(t => t.id === task.id);
+    const existingIndex = state.tasks.findIndex(t => t.id === task.id);
     if (existingIndex >= 0) {
-      tasks[existingIndex] = task;
+      state.tasks[existingIndex] = task;
     } else {
-      tasks.push(task);
+      state.tasks.push(task);
     }
-    localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
     DataService.syncToServer();
   },
 
   deleteTask: (taskId: string) => {
-    const tasks = DataService.getTasks().filter(t => t.id !== taskId);
-    localStorage.setItem(KEYS.TASKS, JSON.stringify(tasks));
+    state.tasks = state.tasks.filter(t => t.id !== taskId);
     DataService.syncToServer();
   },
 
   // Completions
   getCompletions: (): TaskCompletion[] => {
-    return JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]');
+    return state.completions;
   },
 
   toggleCompletion: (taskId: string, userId: string, date: string) => {
-    let completions = DataService.getCompletions();
-    const existingIndex = completions.findIndex(c => c.taskId === taskId && c.userId === userId && c.date === date);
+    const existingIndex = state.completions.findIndex(c => c.taskId === taskId && c.userId === userId && c.date === date);
 
     if (existingIndex >= 0) {
       // Remove (Undo)
-      completions.splice(existingIndex, 1);
+      state.completions.splice(existingIndex, 1);
     } else {
       // Add
       const newCompletion: TaskCompletion = {
@@ -309,26 +249,22 @@ export const DataService = {
         timestamp: Date.now(),
         approved: true
       };
-      completions.push(newCompletion);
+      state.completions.push(newCompletion);
     }
-    localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(completions));
     DataService.syncToServer();
   },
 
   removeCompletion: (taskId: string, userId: string, date: string) => {
-    let completions = DataService.getCompletions();
-    const newCompletions = completions.filter(c => !(c.taskId === taskId && c.userId === userId && c.date === date));
-    localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(newCompletions));
+    state.completions = state.completions.filter(c => !(c.taskId === taskId && c.userId === userId && c.date === date));
     DataService.syncToServer();
   },
 
   // Extra Points
   getExtraPoints: (): ExtraPointEntry[] => {
-    return JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]');
+    return state.extraPoints;
   },
 
   addExtraPoints: (userId: string, points: number, reason: string) => {
-    const extras = DataService.getExtraPoints();
     const newEntry: ExtraPointEntry = {
       id: Date.now().toString(),
       userId,
@@ -336,20 +272,16 @@ export const DataService = {
       reason,
       timestamp: Date.now()
     };
-    extras.push(newEntry);
-    localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(extras));
+    state.extraPoints.push(newEntry);
     DataService.syncToServer();
   },
 
   // Messages (Taunts)
   getMessages: (userId: string): Message[] => {
-      const allMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
-      return allMessages.filter(m => m.toUserId === userId).sort((a,b) => b.timestamp - a.timestamp);
+      return state.messages.filter(m => m.toUserId === userId).sort((a,b) => b.timestamp - a.timestamp);
   },
 
   sendMessage: (fromUserId: string, toUserId: string, content: string, type: 'NORMAL' | 'VACILE' = 'NORMAL') => {
-      // Send a new motivation message
-      const allMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
       const newMsg: Message = {
           id: Date.now().toString(),
           fromUserId,
@@ -359,86 +291,74 @@ export const DataService = {
           read: false,
           type
       };
-      allMessages.push(newMsg);
-      localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
+      state.messages.push(newMsg);
       DataService.syncToServer();
   },
 
   markMessageRead: (msgId: string) => {
-      const allMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
-      const msg = allMessages.find(m => m.id === msgId);
+      const msg = state.messages.find(m => m.id === msgId);
       if(msg) {
           msg.read = true;
-          localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
           DataService.syncToServer();
       }
   },
 
   // Events
   getEvents: (): Event[] => {
-    return JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]');
+    return state.events;
   },
 
   saveEvent: (event: Event) => {
-    const events = DataService.getEvents();
-    const existingIndex = events.findIndex(e => e.id === event.id);
+    const existingIndex = state.events.findIndex(e => e.id === event.id);
     if (existingIndex >= 0) {
-      events[existingIndex] = event;
+      state.events[existingIndex] = event;
     } else {
-      events.push(event);
+      state.events.push(event);
     }
-    localStorage.setItem(KEYS.EVENTS, JSON.stringify(events));
     DataService.syncToServer();
   },
 
   markEventAsRead: (eventId: string, userId: string) => {
-    const events = DataService.getEvents();
-    const event = events.find(e => e.id === eventId);
+    const event = state.events.find(e => e.id === eventId);
     if(event && !event.readBy.includes(userId)) {
       event.readBy.push(userId);
-      localStorage.setItem(KEYS.EVENTS, JSON.stringify(events));
       DataService.syncToServer();
     }
   },
 
   // Rewards (Custom Store)
   getRewards: (): Reward[] => {
-    return JSON.parse(localStorage.getItem(KEYS.REWARDS) || '[]');
+    return state.rewards;
   },
 
   getFamilyRewards: (familyId: string): Reward[] => {
-    return DataService.getRewards().filter(r => r.familyId === familyId);
+    return state.rewards.filter(r => r.familyId === familyId);
   },
 
   saveReward: (reward: Reward) => {
-    const rewards = DataService.getRewards();
-    const existingIndex = rewards.findIndex(r => r.id === reward.id);
+    const existingIndex = state.rewards.findIndex(r => r.id === reward.id);
     if (existingIndex >= 0) {
-      rewards[existingIndex] = reward;
+      state.rewards[existingIndex] = reward;
     } else {
-      rewards.push(reward);
+      state.rewards.push(reward);
     }
-    localStorage.setItem(KEYS.REWARDS, JSON.stringify(rewards));
     DataService.syncToServer();
   },
 
   deleteReward: (rewardId: string) => {
-    const rewards = DataService.getRewards().filter(r => r.id !== rewardId);
-    localStorage.setItem(KEYS.REWARDS, JSON.stringify(rewards));
+    state.rewards = state.rewards.filter(r => r.id !== rewardId);
     DataService.syncToServer();
   },
 
   redeemReward: (userId: string, rewardId: string): boolean => {
-    const rewards = DataService.getRewards();
-    const reward = rewards.find(r => r.id === rewardId);
+    const reward = state.rewards.find(r => r.id === rewardId);
     if (!reward) return false;
 
     const stats = DataService.getUserStats(userId);
     if (stats.spendablePoints < reward.cost) return false;
 
     // Check Availability
-    const allTransactions: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
-    const rewardTransactions = allTransactions.filter(t => t.itemId === rewardId);
+    const rewardTransactions = state.transactions.filter(t => t.itemId === rewardId);
 
     if (reward.limitType === 'unique' && rewardTransactions.length > 0) {
         return false; // Already bought by someone
@@ -450,14 +370,13 @@ export const DataService = {
     }
 
     // Add transaction
-    allTransactions.push({
+    state.transactions.push({
         id: Date.now().toString(),
         userId,
         itemId: rewardId,
         cost: reward.cost,
         timestamp: Date.now()
     });
-    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(allTransactions));
     DataService.syncToServer();
 
     return true;
@@ -465,16 +384,14 @@ export const DataService = {
 
   // Transactions / Shop
   getTransactions: (userId: string): ShopTransaction[] => {
-      const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
-      return all.filter(t => t.userId === userId);
+      return state.transactions.filter(t => t.userId === userId);
   },
 
   getFamilyTransactions: (familyId: string): ShopTransaction[] => {
       // Fetch all transactions for a family to check global limits
-      const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
       const users = DataService.getFamilyUsers(familyId);
       const userIds = users.map(u => u.id);
-      return all.filter(t => userIds.includes(t.userId));
+      return state.transactions.filter(t => userIds.includes(t.userId));
   },
 
   purchaseItem: (userId: string, itemId: string, cost: number): boolean => {
@@ -482,36 +399,30 @@ export const DataService = {
       if (stats.spendablePoints < cost) return false;
 
       // Add transaction
-      const allTransactions: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
-      allTransactions.push({
+      state.transactions.push({
           id: Date.now().toString(),
           userId,
           itemId,
           cost,
           timestamp: Date.now()
       });
-      localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(allTransactions));
 
       // Add to inventory
-      const users = DataService.getUsers();
-      const user = users.find(u => u.id === userId);
+      const user = state.users.find(u => u.id === userId);
       if (user) {
           if (!user.inventory) user.inventory = [];
           if (!user.inventory.includes(itemId)) {
               user.inventory.push(itemId);
           }
-          // If it's a base, auto-equip it if current base is undefined? No, let them equip.
-          // Save user
           DataService.updateUser(user);
+      } else {
+        DataService.syncToServer();
       }
-
-      DataService.syncToServer();
       return true;
   },
 
   updateAvatarConfig: (userId: string, config: AvatarConfig) => {
-      const users = DataService.getUsers();
-      const user = users.find(u => u.id === userId);
+      const user = state.users.find(u => u.id === userId);
       if (user) {
           user.avatarConfig = config;
           DataService.updateUser(user);
@@ -520,9 +431,9 @@ export const DataService = {
 
   // Aggregation
   getUserStats: (userId: string) => {
-    const completions = DataService.getCompletions().filter(c => c.userId === userId);
-    const tasks = DataService.getTasks();
-    const extraPointsList = DataService.getExtraPoints().filter(e => e.userId === userId);
+    const completions = state.completions.filter(c => c.userId === userId);
+    const tasks = state.tasks;
+    const extraPointsList = state.extraPoints.filter(e => e.userId === userId);
     
     let points = 0;
     
@@ -545,19 +456,16 @@ export const DataService = {
     const tasksCompletedCount = completions.length;
     
     // Vaciles Logic
-    const allMessages = DataService.getMessages(userId); // Messages received (not useful for sent count)
-    const rawAllMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
-    const sentVaciles = rawAllMessages.filter(m => m.fromUserId === userId && m.type === 'VACILE');
+    const sentVaciles = state.messages.filter(m => m.fromUserId === userId && m.type === 'VACILE');
     const vacilesSentCount = sentVaciles.length;
 
     let vacilesSentInternal = 0;
     let vacilesSentExternal = 0;
 
-    const user = DataService.getUsers().find(u => u.id === userId);
+    const user = state.users.find(u => u.id === userId);
     if (user) {
-        const allUsers = DataService.getUsers();
         sentVaciles.forEach(msg => {
-            const recipient = allUsers.find(u => u.id === msg.toUserId);
+            const recipient = state.users.find(u => u.id === msg.toUserId);
             if (recipient) {
                 if (recipient.familyId === user.familyId) {
                     vacilesSentInternal++;
@@ -574,7 +482,7 @@ export const DataService = {
   },
 
   getLeaderboard: (familyId?: string) => {
-    let users = DataService.getUsers().filter(u => u.role === Role.KID);
+    let users = state.users.filter(u => u.role === Role.KID);
     if (familyId) {
         users = users.filter(u => u.familyId === familyId);
     }

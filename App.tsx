@@ -18,11 +18,8 @@ const AppContent: React.FC = () => {
   const [pin, setPin] = useState('');
 
   useEffect(() => {
-    const initData = async () => {
-        await DataService.init();
-        setLoading(false);
-    };
-    initData();
+    // DataService is already initialized in App wrapper
+    setLoading(false);
   }, []);
 
   // Sync users when family changes
@@ -206,6 +203,28 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+    // We want to ensure DataService is initialized before FamilyProvider mounts
+    // or at least before FamilyProvider tries to access DataService.
+    // However, FamilyProvider uses useEffect to check localStorage and then calls DataService.
+    // So we should initialize DataService here.
+    const [initDone, setInitDone] = useState(false);
+
+    useEffect(() => {
+        const init = async () => {
+            await DataService.init();
+            setInitDone(true);
+        };
+        init();
+    }, []);
+
+    if (!initDone) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-blue"></div>
+            </div>
+        );
+    }
+
     return (
         <FamilyProvider>
             <AppContent />
