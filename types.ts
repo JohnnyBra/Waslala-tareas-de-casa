@@ -67,6 +67,7 @@ export interface Event {
   style: 'default' | 'golden' | 'sparkle';
   assignedTo: string[];
   readBy: string[];
+  points?: number;
 }
 
 export interface TaskCompletion {

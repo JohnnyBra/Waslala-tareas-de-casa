@@ -70,12 +70,8 @@ const AppContent: React.FC = () => {
 
   // User Selection Logic
   const handleUserSelect = (user: User) => {
-    if (user.role === Role.KID && user.pin === '0000') {
-        handleLogin(user);
-    } else {
-        setSelectedUser(user);
-        setPin('');
-    }
+    setSelectedUser(user);
+    setPin('');
   };
 
   const verifyPin = () => {

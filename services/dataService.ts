@@ -415,11 +415,30 @@ export const DataService = {
     // Vaciles Logic
     const allMessages = DataService.getMessages(userId); // Messages received (not useful for sent count)
     const rawAllMessages: Message[] = JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]');
-    const vacilesSentCount = rawAllMessages.filter(m => m.fromUserId === userId && m.type === 'VACILE').length;
+    const sentVaciles = rawAllMessages.filter(m => m.fromUserId === userId && m.type === 'VACILE');
+    const vacilesSentCount = sentVaciles.length;
+
+    let vacilesSentInternal = 0;
+    let vacilesSentExternal = 0;
+
+    const user = DataService.getUsers().find(u => u.id === userId);
+    if (user) {
+        const allUsers = DataService.getUsers();
+        sentVaciles.forEach(msg => {
+            const recipient = allUsers.find(u => u.id === msg.toUserId);
+            if (recipient) {
+                if (recipient.familyId === user.familyId) {
+                    vacilesSentInternal++;
+                } else {
+                    vacilesSentExternal++;
+                }
+            }
+        });
+    }
 
     const earnedBadges = BADGES.filter(b => b.condition(points, tasksCompletedCount));
 
-    return { points, spendablePoints, tasksCompletedCount, earnedBadges, extraPointsList, vacilesSentCount };
+    return { points, spendablePoints, tasksCompletedCount, earnedBadges, extraPointsList, vacilesSentCount, vacilesSentInternal, vacilesSentExternal };
   },
 
   getLeaderboard: (familyId?: string) => {
