@@ -24,6 +24,7 @@ const TAUNT_MESSAGES = [
 
 const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<AppEvent[]>([]); // New state for task-list events
   const [completions, setCompletions] = useState<TaskCompletion[]>([]);
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
   const [view, setView] = useState<'tasks' | 'ranking' | 'badges'>('tasks');
@@ -32,7 +33,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [rankingScope, setRankingScope] = useState<'family' | 'global'>('family');
   const [rankingTimeframe, setRankingTimeframe] = useState<'weekly' | 'monthly' | 'global'>('global');
 
-  // Events State
+  // Events State (Modal)
   const [activeEvent, setActiveEvent] = useState<AppEvent | null>(null);
   
   // Weekly View State
@@ -66,10 +67,13 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     checkEvents();
   }, [currentUser, selectedDate]);
 
+  const getSelectedDateString = () => selectedDate.toISOString().split('T')[0];
+
   const loadData = () => {
     // 1. Determine day of week for the Selected Date (0=Sun, 1=Mon...)
     const dayOfWeek = selectedDate.getDay(); 
-    
+    const dateStr = getSelectedDateString();
+
     // 2. Filter tasks assigned to user AND scheduled for that day
     const allTasks = DataService.getTasks();
     const myTasks = allTasks.filter(t => 
@@ -77,6 +81,15 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       t.recurrence.includes(dayOfWeek)
     );
     setTasks(myTasks);
+
+    // 3. Fetch Events for the day
+    const allEvents = DataService.getEvents();
+    const todayEvents = allEvents.filter(e =>
+        e.assignedTo.includes(currentUser.id) &&
+        e.date === dateStr
+    );
+    setEvents(todayEvents);
+
     setCompletions(DataService.getCompletions());
     const currentStats = DataService.getUserStats(currentUser.id);
     setStats(currentStats);
@@ -129,8 +142,6 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       }
   };
 
-  const getSelectedDateString = () => selectedDate.toISOString().split('T')[0];
-
   const handleToggleTask = (taskId: string) => {
     const dateStr = getSelectedDateString();
     
@@ -165,6 +176,26 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     }
 
     loadData();
+  };
+
+  const handleToggleEvent = (event: AppEvent) => {
+      const isRead = event.readBy.includes(currentUser.id);
+      if (isRead) return; // Already read/done
+
+      DataService.markEventAsRead(event.id, currentUser.id);
+
+      if (event.points && event.points > 0) {
+          DataService.addExtraPoints(currentUser.id, event.points, `Evento: ${event.title}`);
+      }
+
+      Confetti({
+          particleCount: 150,
+          spread: 100,
+          origin: { y: 0.6 },
+          colors: event.style === 'golden' ? ['#FFD700', '#FFA500'] : (event.style === 'sparkle' ? ['#FFD700', '#FF00FF', '#00FFFF'] : ['#26ccff', '#a25afd'])
+      });
+
+      loadData();
   };
 
   const handleSendTaunt = () => {
@@ -501,13 +532,59 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         {selectedDate.toDateString() === new Date().toDateString() && <span className="bg-brand-green/20 text-brand-green px-2 py-0.5 rounded-full text-xs">Hoy</span>}
       </div>
 
-      {tasks.length === 0 ? (
+      {(tasks.length === 0 && events.length === 0) ? (
         <div className="text-center py-12 text-gray-500">
             <div className="text-6xl mb-4">😌</div>
             <p>Nada programado para este día.</p>
         </div>
       ) : (
-        tasks.map(task => {
+        <>
+        {/* Render Events as Special Tasks */}
+        {events.map(event => {
+            const isDone = event.readBy.includes(currentUser.id);
+            const styleColor = event.style === 'golden' ? 'border-yellow-400 bg-yellow-50' : (event.style === 'sparkle' ? 'border-purple-400 bg-purple-50' : 'border-blue-200 bg-blue-50');
+            const icon = event.style === 'golden' ? '🏆' : (event.style === 'sparkle' ? '✨' : '📅');
+
+            return (
+                <div
+                    key={event.id}
+                    onClick={() => handleToggleEvent(event)}
+                    className={`
+                        relative p-4 rounded-3xl shadow-md transition-all duration-300 transform border-4
+                        ${isDone ? 'bg-gray-100 border-gray-200 opacity-80' : `${styleColor} hover:scale-[1.02] cursor-pointer`}
+                    `}
+                >
+                    <div className="flex items-center gap-4">
+                         <div className={`
+                            w-16 h-16 rounded-2xl flex items-center justify-center text-4xl transition-colors
+                            ${isDone ? 'bg-gray-300 text-gray-500' : 'bg-white shadow-sm'}
+                        `}>
+                            {isDone ? <Icons.Check /> : icon}
+                        </div>
+                        <div className="flex-1">
+                            <h3 className={`font-bold text-lg ${isDone ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                                {event.title}
+                            </h3>
+                            <p className={`text-xs ${isDone ? 'text-gray-400' : 'text-gray-600'} mb-1`}>{event.description}</p>
+
+                            {event.points && event.points > 0 && (
+                                <span className={`inline-block text-xs font-bold px-2 py-1 rounded-full ${isDone ? 'bg-gray-200 text-gray-500' : 'bg-brand-yellow text-brand-dark'}`}>
+                                    🎁 +{event.points} puntos
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    {!isDone && (
+                        <div className="absolute top-2 right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full animate-pulse">
+                            ¡ESPECIAL!
+                        </div>
+                    )}
+                </div>
+            );
+        })}
+
+        {/* Render Regular Tasks */}
+        {tasks.map(task => {
           const statusObj = getTaskStatus(task);
           const isDoneByMe = statusObj.status === 'completed_by_me';
           const isDoneByOther = statusObj.status === 'completed_by_other';
@@ -551,7 +628,8 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
               </div>
             </div>
           );
-        })
+        })}
+        </>
       )}
     </div>
   );
