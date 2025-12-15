@@ -1,4 +1,4 @@
-import { Family, User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig } from '../types';
+import { Family, User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig, Reward } from '../types';
 import { AVATAR_ITEMS, getItemById } from '../constants/avatarItems';
 
 // Initial Mock Data (kept for fallback structure, but using db.json primarily)
@@ -43,7 +43,8 @@ const KEYS = {
   EXTRA_POINTS: 'st_extra_points',
   MESSAGES: 'st_messages',
   EVENTS: 'st_events',
-  TRANSACTIONS: 'st_transactions'
+  TRANSACTIONS: 'st_transactions',
+  REWARDS: 'st_rewards'
 };
 
 // API Base URL (relative since we serve from same origin in production)
@@ -70,6 +71,7 @@ export const DataService = {
             if(serverData.messages) localStorage.setItem(KEYS.MESSAGES, JSON.stringify(serverData.messages));
             if(serverData.events) localStorage.setItem(KEYS.EVENTS, JSON.stringify(serverData.events));
             if(serverData.transactions) localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(serverData.transactions));
+            if(serverData.rewards) localStorage.setItem(KEYS.REWARDS, JSON.stringify(serverData.rewards));
         } else {
             // If server is empty, use initial data if local is also empty
             if (!localStorage.getItem(KEYS.FAMILIES)) {
@@ -96,6 +98,9 @@ export const DataService = {
             if (!localStorage.getItem(KEYS.TRANSACTIONS)) {
                 localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify([]));
             }
+            if (!localStorage.getItem(KEYS.REWARDS)) {
+                localStorage.setItem(KEYS.REWARDS, JSON.stringify([]));
+            }
             // Save initial data to server
             DataService.syncToServer();
         }
@@ -118,7 +123,8 @@ export const DataService = {
           extraPoints: JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]'),
           messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]'),
           events: JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]'),
-          transactions: JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]')
+          transactions: JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]'),
+          rewards: JSON.parse(localStorage.getItem(KEYS.REWARDS) || '[]')
       };
 
       try {
@@ -339,10 +345,67 @@ export const DataService = {
     }
   },
 
+  // Rewards (Custom Store)
+  getRewards: (): Reward[] => {
+    return JSON.parse(localStorage.getItem(KEYS.REWARDS) || '[]');
+  },
+
+  getFamilyRewards: (familyId: string): Reward[] => {
+    return DataService.getRewards().filter(r => r.familyId === familyId);
+  },
+
+  saveReward: (reward: Reward) => {
+    const rewards = DataService.getRewards();
+    const existingIndex = rewards.findIndex(r => r.id === reward.id);
+    if (existingIndex >= 0) {
+      rewards[existingIndex] = reward;
+    } else {
+      rewards.push(reward);
+    }
+    localStorage.setItem(KEYS.REWARDS, JSON.stringify(rewards));
+    DataService.syncToServer();
+  },
+
+  deleteReward: (rewardId: string) => {
+    const rewards = DataService.getRewards().filter(r => r.id !== rewardId);
+    localStorage.setItem(KEYS.REWARDS, JSON.stringify(rewards));
+    DataService.syncToServer();
+  },
+
+  redeemReward: (userId: string, rewardId: string): boolean => {
+    const rewards = DataService.getRewards();
+    const reward = rewards.find(r => r.id === rewardId);
+    if (!reward) return false;
+
+    const stats = DataService.getUserStats(userId);
+    if (stats.spendablePoints < reward.cost) return false;
+
+    // Add transaction
+    const allTransactions: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
+    allTransactions.push({
+        id: Date.now().toString(),
+        userId,
+        itemId: rewardId,
+        cost: reward.cost,
+        timestamp: Date.now()
+    });
+    localStorage.setItem(KEYS.TRANSACTIONS, JSON.stringify(allTransactions));
+    DataService.syncToServer();
+
+    return true;
+  },
+
   // Transactions / Shop
   getTransactions: (userId: string): ShopTransaction[] => {
       const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
       return all.filter(t => t.userId === userId);
+  },
+
+  getFamilyTransactions: (familyId: string): ShopTransaction[] => {
+      const all: ShopTransaction[] = JSON.parse(localStorage.getItem(KEYS.TRANSACTIONS) || '[]');
+      const users = DataService.getFamilyUsers(familyId);
+      const userIds = users.map(u => u.id);
+      return all.filter(t => userIds.includes(t.userId));
   },
 
   purchaseItem: (userId: string, itemId: string, cost: number): boolean => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Task, Role, Event as AppEvent } from '../types';
+import { User, Task, Role, Event as AppEvent, Reward, ShopTransaction } from '../types';
 import { DataService, getTodayString } from '../services/dataService';
 import { Icons } from './Icon';
 
@@ -50,12 +50,13 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [completions, setCompletions] = useState(DataService.getCompletions());
   const [extraPoints, setExtraPoints] = useState(DataService.getExtraPoints());
+  const [rewards, setRewards] = useState<Reward[]>([]);
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [showPointsModal, setShowPointsModal] = useState<string | null>(null); // userId or null
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [view, setView] = useState<'status' | 'weekly' | 'manage' | 'events'>('status');
+  const [view, setView] = useState<'status' | 'weekly' | 'manage' | 'events' | 'store'>('status');
 
   // Date State
   const [selectedDate, setSelectedDate] = useState(getTodayString());
@@ -90,6 +91,12 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [newEventPoints, setNewEventPoints] = useState(0);
   const [newEventAssignees, setNewEventAssignees] = useState<string[]>([]);
 
+  // Rewards Form State
+  const [showRewardModal, setShowRewardModal] = useState(false);
+  const [newRewardName, setNewRewardName] = useState('');
+  const [newRewardCost, setNewRewardCost] = useState(50);
+  const [newRewardIcon, setNewRewardIcon] = useState('🎁');
+
   // Points Form State
   const [pointsAmount, setPointsAmount] = useState(10);
   const [pointsReason, setPointsReason] = useState('');
@@ -103,7 +110,8 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     setUsers(DataService.getFamilyUsers(currentUser.familyId));
     setCompletions(DataService.getCompletions());
     setExtraPoints(DataService.getExtraPoints());
-    setEvents(DataService.getEvents()); // Events currently global, or filter? Usually event should be family scoped too.
+    setRewards(DataService.getFamilyRewards(currentUser.familyId));
+
     // Let's filter events by assignedTo users who are in the family, or we should add familyId to Events.
     // For now, filtering events by checking if assigned users belong to family.
     const familyUserIds = DataService.getFamilyUsers(currentUser.familyId).map(u => u.id);
@@ -243,6 +251,37 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       setNewEventPoints(0);
       setNewEventAssignees([]);
   }
+
+  const resetRewardForm = () => {
+      setNewRewardName('');
+      setNewRewardCost(50);
+      setNewRewardIcon('🎁');
+  }
+
+  const handleCreateReward = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newRewardName) return;
+
+      const reward: Reward = {
+          id: Date.now().toString(),
+          familyId: currentUser.familyId,
+          name: newRewardName,
+          cost: Number(newRewardCost),
+          icon: newRewardIcon
+      };
+
+      DataService.saveReward(reward);
+      setShowRewardModal(false);
+      resetRewardForm();
+      loadData();
+  };
+
+  const handleDeleteReward = (id: string) => {
+      if(confirm('¿Borrar este premio?')) {
+          DataService.deleteReward(id);
+          loadData();
+      }
+  };
 
   const handleCreateEvent = (e: React.FormEvent) => {
       e.preventDefault();
@@ -504,6 +543,90 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
       </div>
   );
 
+  const renderStore = () => {
+      // Calculate recent redemptions
+      const familyTransactions = DataService.getFamilyTransactions(currentUser.familyId);
+      const rewardIds = rewards.map(r => r.id);
+
+      const redemptions = familyTransactions
+        .filter(t => rewardIds.includes(t.itemId))
+        .sort((a,b) => b.timestamp - a.timestamp)
+        .slice(0, 10); // Last 10
+
+      return (
+          <div className="space-y-8">
+               <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-xl font-bold text-gray-800">Premios Disponibles</h2>
+                        <button
+                            onClick={() => setShowRewardModal(true)}
+                            className="bg-brand-pink text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-pink-600"
+                        >
+                            <Icons.Plus size={20}/> Nuevo Premio
+                        </button>
+                    </div>
+
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                        {rewards.map(reward => (
+                            <div key={reward.id} className="bg-white p-4 rounded-xl shadow-sm flex items-center justify-between border-2 border-transparent hover:border-brand-pink">
+                                <div className="flex items-center gap-4">
+                                    <div className="text-4xl w-14 h-14 bg-pink-50 rounded-lg flex items-center justify-center">
+                                        {reward.icon}
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800 text-lg">{reward.name}</h3>
+                                        <div className="text-brand-pink font-bold bg-pink-100 inline-block px-2 py-0.5 rounded text-xs">
+                                            {reward.cost} Puntos
+                                        </div>
+                                    </div>
+                                </div>
+                                <button onClick={() => handleDeleteReward(reward.id)} className="text-red-300 hover:text-red-500 p-2">
+                                    <Icons.Trash2 size={20} />
+                                </button>
+                            </div>
+                        ))}
+                         {rewards.length === 0 && (
+                            <div className="col-span-full text-center py-10 text-gray-400 italic">
+                                No hay premios creados. ¡Añade uno!
+                            </div>
+                        )}
+                    </div>
+               </div>
+
+               {/* Redemption History */}
+               <div className="bg-gray-100 p-4 rounded-2xl">
+                   <h2 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
+                       <Icons.ShoppingBag size={20} /> Historial de Compras (Últimas 10)
+                   </h2>
+                   <div className="space-y-2">
+                       {redemptions.map(t => {
+                           const user = users.find(u => u.id === t.userId);
+                           const reward = rewards.find(r => r.id === t.itemId);
+                           if (!user || !reward) return null;
+                           return (
+                               <div key={t.id} className="bg-white p-3 rounded-xl flex items-center justify-between shadow-sm">
+                                   <div className="flex items-center gap-3">
+                                       <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                                            {user.avatar.startsWith('data:') ? <img src={user.avatar} className="w-full h-full object-cover"/> : user.avatar}
+                                       </div>
+                                       <div>
+                                           <div className="font-bold text-sm">{user.name} compró <span className="text-brand-pink">{reward.name}</span></div>
+                                           <div className="text-xs text-gray-400">{new Date(t.timestamp).toLocaleString()}</div>
+                                       </div>
+                                   </div>
+                                   <div className="font-bold text-gray-500">-{t.cost}</div>
+                               </div>
+                           )
+                       })}
+                       {redemptions.length === 0 && (
+                           <div className="text-center text-gray-400 text-sm py-4">Aún nadie ha comprado nada.</div>
+                       )}
+                   </div>
+               </div>
+          </div>
+      )
+  };
+
   const renderEvents = () => (
       <div className="space-y-4">
            <div className="flex justify-between items-center">
@@ -583,12 +706,19 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                 >
                     Eventos
                 </button>
+                <button
+                    onClick={() => setView('store')}
+                    className={`flex-1 py-2 px-2 whitespace-nowrap rounded-lg font-bold text-sm ${view === 'store' ? 'bg-white shadow-sm text-brand-dark' : 'text-gray-500'}`}
+                >
+                    Tienda
+                </button>
             </div>
 
             {view === 'status' && renderStatus()}
             {view === 'weekly' && renderWeekly()}
             {view === 'manage' && renderManage()}
             {view === 'events' && renderEvents()}
+            {view === 'store' && renderStore()}
         </div>
 
         {/* Add Task Modal */}
@@ -828,6 +958,77 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                      </form>
                 </div>
             </div>
+        )}
+
+        {/* Create Reward Modal */}
+        {showRewardModal && (
+             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl p-6 w-full max-w-sm animate-fade-in-up">
+                     <h2 className="text-2xl font-bold mb-4 text-brand-pink">Nuevo Premio</h2>
+                     <form onSubmit={handleCreateReward} className="space-y-4">
+                         <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Nombre del Premio</label>
+                            <input
+                                required
+                                value={newRewardName}
+                                onChange={e => setNewRewardName(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-pink outline-none"
+                                placeholder="Ej: 1 Hora de TV"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-1">Coste (Puntos)</label>
+                            <input
+                                type="number"
+                                required
+                                value={newRewardCost}
+                                onChange={e => setNewRewardCost(Number(e.target.value))}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 focus:border-brand-pink outline-none"
+                            />
+                        </div>
+
+                         <div>
+                            <label className="block text-sm font-bold text-gray-700 mb-2">Seleccionar Icono:</label>
+                            <div className="h-[52px] flex items-center justify-center border-2 border-gray-200 rounded-xl bg-gray-50 text-2xl mb-2">
+                                {newRewardIcon}
+                            </div>
+                            <div className="grid grid-cols-5 gap-2 bg-gray-50 p-3 rounded-xl max-h-40 overflow-y-auto">
+                                {['🎁', '📺', '🍦', '🎮', '🍕', '🍔', '🎡', '🧸', '🚲', '🍿', '🍩', '🍬', '🎨', '⚽', '📱', '💻', '💸', '⏰', '🛌', '🏖️'].map(icon => (
+                                    <button
+                                        key={icon}
+                                        type="button"
+                                        onClick={() => setNewRewardIcon(icon)}
+                                        className={`text-2xl p-2 rounded-lg transition-all ${
+                                            newRewardIcon === icon
+                                            ? 'bg-brand-pink text-white shadow-md transform scale-110'
+                                            : 'bg-white hover:bg-gray-200 text-gray-700'
+                                        }`}
+                                    >
+                                        {icon}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 pt-4">
+                            <button
+                                type="button"
+                                onClick={() => setShowRewardModal(false)}
+                                className="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 py-3 rounded-xl font-bold bg-brand-pink text-white shadow-lg hover:bg-pink-600"
+                            >
+                                Crear Premio
+                            </button>
+                        </div>
+                     </form>
+                </div>
+             </div>
         )}
 
         {/* Extra Points Modal */}

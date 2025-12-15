@@ -70,6 +70,14 @@ export interface Event {
   points?: number;
 }
 
+export interface Reward {
+  id: string;
+  familyId: string;
+  name: string;
+  cost: number;
+  icon: string;
+}
+
 export interface TaskCompletion {
   id: string;
   taskId: string;
