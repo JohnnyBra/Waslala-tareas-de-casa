@@ -76,6 +76,7 @@ export interface Reward {
   name: string;
   cost: number;
   icon: string;
+  limitType?: 'unlimited' | 'once_per_user' | 'unique';
 }
 
 export interface TaskCompletion {

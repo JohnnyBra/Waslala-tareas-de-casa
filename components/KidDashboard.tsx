@@ -30,6 +30,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   const [stats, setStats] = useState(DataService.getUserStats(currentUser.id));
   const [view, setView] = useState<'tasks' | 'ranking' | 'badges' | 'store'>('tasks');
   const [leaderboard, setLeaderboard] = useState(DataService.getLeaderboard(currentUser.familyId));
+  const [transactions, setTransactions] = useState<any[]>([]);
   // Separated scopes for ranking
   const [rankingScope, setRankingScope] = useState<'family' | 'global'>('family');
   const [rankingTimeframe, setRankingTimeframe] = useState<'weekly' | 'monthly' | 'global'>('global');
@@ -97,6 +98,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
     setStats(currentStats);
     setLeaderboard(DataService.getLeaderboard(currentUser.familyId));
     setMessages(DataService.getMessages(currentUser.id));
+    setTransactions(DataService.getFamilyTransactions(currentUser.familyId));
     setAllKids(DataService.getUsers().filter(u => u.role === Role.KID && u.id !== currentUser.id));
 
     // Update Vaciles Counters
@@ -376,25 +378,55 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
           <div className="grid grid-cols-2 gap-4">
               {rewards.map(reward => {
+                  const rewardTransactions = transactions.filter(t => t.itemId === reward.id);
+                  const myTransactions = rewardTransactions.filter(t => t.userId === currentUser.id);
+                  const isUniqueSold = reward.limitType === 'unique' && rewardTransactions.length > 0;
+                  const isBoughtByMe = reward.limitType === 'once_per_user' && myTransactions.length > 0;
+
+                  const isSoldOut = isUniqueSold && !myTransactions.length;
+                  const isAlreadyBought = isBoughtByMe || (isUniqueSold && myTransactions.length > 0);
+
                   const canAfford = stats.spendablePoints >= reward.cost;
+                  const isDisabled = !canAfford || isSoldOut || isAlreadyBought;
+
                   return (
                       <button
                           key={reward.id}
                           onClick={() => handleBuyReward(reward)}
-                          disabled={!canAfford}
+                          disabled={isDisabled}
                           className={`
                             relative p-4 rounded-2xl shadow-sm border-b-4 text-center transition-all active:scale-95
-                            ${canAfford ? 'bg-white border-brand-pink/20 hover:border-brand-pink' : 'bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed'}
+                            ${isDisabled ? 'bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed' : 'bg-white border-brand-pink/20 hover:border-brand-pink'}
                           `}
                       >
                           <div className="text-5xl mb-3 transform transition-transform hover:scale-110">{reward.icon}</div>
                           <h3 className="font-bold text-gray-800 leading-tight mb-2 min-h-[2.5rem] flex items-center justify-center">{reward.name}</h3>
-                          <div className={`
-                            inline-block px-3 py-1 rounded-full text-xs font-bold
-                            ${canAfford ? 'bg-brand-pink text-white' : 'bg-gray-300 text-gray-500'}
-                          `}>
-                              {reward.cost} Puntos
+
+                          <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+                                {reward.limitType === 'unique' && (
+                                    <span className="bg-purple-100 text-purple-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-purple-200">ÚNICO</span>
+                                )}
+                                {reward.limitType === 'once_per_user' && (
+                                    <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full font-bold border border-blue-200">1/PERS</span>
+                                )}
                           </div>
+
+                          {isSoldOut ? (
+                               <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-gray-400 text-white">
+                                   AGOTADO
+                               </div>
+                          ) : isAlreadyBought ? (
+                              <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-green-500 text-white">
+                                  COMPRADO
+                              </div>
+                          ) : (
+                              <div className={`
+                                inline-block px-3 py-1 rounded-full text-xs font-bold
+                                ${canAfford ? 'bg-brand-pink text-white' : 'bg-gray-300 text-gray-500'}
+                              `}>
+                                  {reward.cost} Puntos
+                              </div>
+                          )}
                       </button>
                   )
               })}
