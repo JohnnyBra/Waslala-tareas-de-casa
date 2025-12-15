@@ -85,6 +85,13 @@ const AppContent: React.FC = () => {
       }
   };
 
+  const renderAvatar = (avatar: string) => {
+      if (avatar.startsWith('data:') || avatar.startsWith('/uploads/') || avatar.startsWith('http')) {
+          return <img src={avatar} alt="avatar" className="w-full h-full object-cover" />;
+      }
+      return avatar;
+  };
+
 
   if (loading || familyLoading) {
       return (
@@ -125,8 +132,8 @@ const AppContent: React.FC = () => {
                                 onClick={() => handleUserSelect(user)}
                                 className="flex flex-col items-center p-6 rounded-2xl hover:bg-gray-50 transition-all group border-2 border-transparent hover:border-gray-100"
                             >
-                                <div className={`w-24 h-24 rounded-full ${user.color} flex items-center justify-center text-4xl mb-4 shadow-lg group-hover:scale-110 transition-transform`}>
-                                    {user.avatar}
+                                <div className={`w-24 h-24 rounded-full ${user.color} flex items-center justify-center text-4xl mb-4 shadow-lg group-hover:scale-110 transition-transform overflow-hidden`}>
+                                    {renderAvatar(user.avatar)}
                                 </div>
                                 <span className="text-xl font-bold text-gray-700 group-hover:text-brand-blue">{user.name}</span>
                             </button>
@@ -138,8 +145,8 @@ const AppContent: React.FC = () => {
                 ) : (
                     <div className="max-w-xs mx-auto relative z-10 animate-fade-in">
                         <div className="text-center mb-8">
-                            <div className={`w-24 h-24 rounded-full ${selectedUser.color} mx-auto flex items-center justify-center text-4xl mb-4 shadow-lg`}>
-                                {selectedUser.avatar}
+                            <div className={`w-24 h-24 rounded-full ${selectedUser.color} mx-auto flex items-center justify-center text-4xl mb-4 shadow-lg overflow-hidden`}>
+                                {renderAvatar(selectedUser.avatar)}
                             </div>
                             <h2 className="text-2xl font-bold text-gray-800">Hola {selectedUser.name}</h2>
                             <p className="text-gray-400 text-sm">Introduce tu PIN secreto</p>
