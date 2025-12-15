@@ -1,4 +1,4 @@
-import { User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message } from '../types';
+import { User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event } from '../types';
 
 // Initial Mock Data
 const INITIAL_USERS: User[] = [
@@ -32,7 +32,8 @@ const KEYS = {
   TASKS: 'st_tasks',
   COMPLETIONS: 'st_completions',
   EXTRA_POINTS: 'st_extra_points',
-  MESSAGES: 'st_messages'
+  MESSAGES: 'st_messages',
+  EVENTS: 'st_events'
 };
 
 // API Base URL (relative since we serve from same origin in production)
@@ -56,6 +57,7 @@ export const DataService = {
             if(serverData.completions) localStorage.setItem(KEYS.COMPLETIONS, JSON.stringify(serverData.completions));
             if(serverData.extraPoints) localStorage.setItem(KEYS.EXTRA_POINTS, JSON.stringify(serverData.extraPoints));
             if(serverData.messages) localStorage.setItem(KEYS.MESSAGES, JSON.stringify(serverData.messages));
+            if(serverData.events) localStorage.setItem(KEYS.EVENTS, JSON.stringify(serverData.events));
         } else {
             // If server is empty, use initial data if local is also empty
             if (!localStorage.getItem(KEYS.USERS)) {
@@ -72,6 +74,9 @@ export const DataService = {
             }
             if (!localStorage.getItem(KEYS.MESSAGES)) {
                 localStorage.setItem(KEYS.MESSAGES, JSON.stringify([]));
+            }
+            if (!localStorage.getItem(KEYS.EVENTS)) {
+                localStorage.setItem(KEYS.EVENTS, JSON.stringify([]));
             }
             // Save initial data to server
             DataService.syncToServer();
@@ -91,7 +96,8 @@ export const DataService = {
           tasks: JSON.parse(localStorage.getItem(KEYS.TASKS) || '[]'),
           completions: JSON.parse(localStorage.getItem(KEYS.COMPLETIONS) || '[]'),
           extraPoints: JSON.parse(localStorage.getItem(KEYS.EXTRA_POINTS) || '[]'),
-          messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]')
+          messages: JSON.parse(localStorage.getItem(KEYS.MESSAGES) || '[]'),
+          events: JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]')
       };
 
       try {
@@ -249,6 +255,33 @@ export const DataService = {
           localStorage.setItem(KEYS.MESSAGES, JSON.stringify(allMessages));
           DataService.syncToServer();
       }
+  },
+
+  // Events
+  getEvents: (): Event[] => {
+    return JSON.parse(localStorage.getItem(KEYS.EVENTS) || '[]');
+  },
+
+  saveEvent: (event: Event) => {
+    const events = DataService.getEvents();
+    const existingIndex = events.findIndex(e => e.id === event.id);
+    if (existingIndex >= 0) {
+      events[existingIndex] = event;
+    } else {
+      events.push(event);
+    }
+    localStorage.setItem(KEYS.EVENTS, JSON.stringify(events));
+    DataService.syncToServer();
+  },
+
+  markEventAsRead: (eventId: string, userId: string) => {
+    const events = DataService.getEvents();
+    const event = events.find(e => e.id === eventId);
+    if(event && !event.readBy.includes(userId)) {
+      event.readBy.push(userId);
+      localStorage.setItem(KEYS.EVENTS, JSON.stringify(events));
+      DataService.syncToServer();
+    }
   },
 
   // Aggregation
