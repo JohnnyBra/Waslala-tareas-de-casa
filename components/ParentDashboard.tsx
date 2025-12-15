@@ -95,14 +95,21 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   useEffect(() => {
     loadData();
-  }, [view, selectedDate]);
+  }, [view, selectedDate, currentUser.familyId]);
 
   const loadData = () => {
-    setTasks(DataService.getTasks());
-    setUsers(DataService.getUsers());
+    setTasks(DataService.getFamilyTasks(currentUser.familyId));
+    setUsers(DataService.getFamilyUsers(currentUser.familyId));
     setCompletions(DataService.getCompletions());
     setExtraPoints(DataService.getExtraPoints());
-    setEvents(DataService.getEvents());
+    setEvents(DataService.getEvents()); // Events currently global, or filter? Usually event should be family scoped too.
+    // Let's filter events by assignedTo users who are in the family, or we should add familyId to Events.
+    // For now, filtering events by checking if assigned users belong to family.
+    const familyUserIds = DataService.getFamilyUsers(currentUser.familyId).map(u => u.id);
+    const allEvents = DataService.getEvents();
+    // Simple heuristic: If an event is assigned to at least one user in the family, show it.
+    const familyEvents = allEvents.filter(e => e.assignedTo.some(uid => familyUserIds.includes(uid)));
+    setEvents(familyEvents);
   };
 
   const changeDate = (days: number) => {
@@ -116,6 +123,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
     const taskToSave: Task = {
         id: editingTaskId || Date.now().toString(),
+        familyId: currentUser.familyId,
         title: newTaskTitle,
         points: Number(newTaskPoints),
         icon: newTaskIcon,
