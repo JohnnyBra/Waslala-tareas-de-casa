@@ -489,16 +489,17 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                     <Icons.Settings className="text-white" size={20} />
                 </div>
               </button>
+
+               {/* My Character / Avatar */}
+               <div className="relative -mb-4">
+                  <Avatar config={currentUser.avatarConfig} size={45} />
+               </div>
+
               <div>
                   <h1 className="font-bold text-xl">{currentUser.name}</h1>
                   <p className="text-sm opacity-90">{stats.points} Puntos Totales</p>
               </div>
            </div>
-           
-           {/* My Character / Avatar */}
-            <div className="absolute top-10 left-1/2 transform -translate-x-1/2 flex flex-col items-center pointer-events-none opacity-20 scale-150 origin-top">
-                 <Avatar config={currentUser.avatarConfig} size={150} />
-            </div>
 
            <div className="flex gap-2">
                {/* Inbox Button */}
