@@ -181,6 +181,16 @@ export const DataService = {
       return newFamily;
   },
 
+  deleteFamily: (familyId: string) => {
+      state.families = state.families.filter(f => f.id !== familyId);
+      // Clean up related data
+      state.users = state.users.filter(u => u.familyId !== familyId);
+      state.tasks = state.tasks.filter(t => t.familyId !== familyId);
+      state.rewards = state.rewards.filter(r => r.familyId !== familyId);
+      // We could clean up completions, extra points, etc., based on user IDs, but minimal cleanup is fine for now
+      DataService.syncToServer();
+  },
+
   // Users
   getUsers: (): User[] => {
     return state.users;
@@ -309,6 +319,9 @@ export const DataService = {
   },
 
   saveEvent: (event: Event) => {
+    // Ensure backwards compatibility or default values
+    if (!event.completedBy) event.completedBy = [];
+
     const existingIndex = state.events.findIndex(e => e.id === event.id);
     if (existingIndex >= 0) {
       state.events[existingIndex] = event;
@@ -324,6 +337,17 @@ export const DataService = {
       event.readBy.push(userId);
       DataService.syncToServer();
     }
+  },
+
+  markEventCompleted: (eventId: string, userId: string) => {
+      const event = state.events.find(e => e.id === eventId);
+      if (event) {
+          if (!event.completedBy) event.completedBy = [];
+          if (!event.completedBy.includes(userId)) {
+              event.completedBy.push(userId);
+              DataService.syncToServer();
+          }
+      }
   },
 
   // Rewards (Custom Store)

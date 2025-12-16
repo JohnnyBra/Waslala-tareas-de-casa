@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DataService } from '../services/dataService';
 import { Role } from '../types';
-import { X, UserPlus, Save, Home } from 'lucide-react';
+import { X, UserPlus, Save, Home, Trash2 } from 'lucide-react';
 
 interface SystemAdminPanelProps {
     onClose: () => void;
@@ -29,6 +29,15 @@ export const SystemAdminPanel: React.FC<SystemAdminPanelProps> = ({ onClose }) =
         setNewFamilyName('');
         setMessage('Familia creada con éxito');
         setTimeout(() => setMessage(''), 3000);
+    };
+
+    const handleDeleteFamily = (id: string) => {
+        if (confirm('¿Seguro que quieres eliminar esta familia? Se borrarán todos sus usuarios y datos.')) {
+            DataService.deleteFamily(id);
+            setFamilies(DataService.getFamilies());
+            setMessage('Familia eliminada');
+            setTimeout(() => setMessage(''), 3000);
+        }
     };
 
     const handleCreateUser = (e: React.FormEvent) => {
@@ -113,8 +122,17 @@ export const SystemAdminPanel: React.FC<SystemAdminPanelProps> = ({ onClose }) =
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {families.map(f => (
                                     <div key={f.id} className="p-4 border rounded-lg flex justify-between items-center bg-white shadow-sm">
-                                        <span className="font-medium">{f.name}</span>
-                                        <span className="text-xs text-gray-400 font-mono">{f.id}</span>
+                                        <div>
+                                            <div className="font-medium">{f.name}</div>
+                                            <div className="text-xs text-gray-400 font-mono">{f.id}</div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteFamily(f.id)}
+                                            className="text-red-400 hover:text-red-600 p-2"
+                                            title="Eliminar Familia"
+                                        >
+                                            <Trash2 size={18} />
+                                        </button>
                                     </div>
                                 ))}
                             </div>

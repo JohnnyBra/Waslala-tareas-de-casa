@@ -66,7 +66,8 @@ export interface Event {
   type: 'popup' | 'banner';
   style: 'default' | 'golden' | 'sparkle';
   assignedTo: string[];
-  readBy: string[];
+  readBy: string[]; // Users who have SEEN/DISMISSED the popup
+  completedBy: string[]; // Users who have COMPLETED the event task
   points?: number;
 }
 
