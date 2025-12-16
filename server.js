@@ -214,11 +214,10 @@ app.post('/api/action', async (req, res) => {
     }
 });
 
-// Endpoint to save all data (Deprecated but kept for init/emergency if needed, though client shouldn't use it anymore)
-// Kept for backward compatibility if any old client connects? No, we control the client.
-// But let's leave it restricted or remove it to enforce usage of actions.
-// Actually, let's keep it but it will overwrite. Better remove it to prevent the bug from reoccurring.
-// I will comment it out or make it use the queue just in case.
+// Endpoint to save all data - DEPRECATED AND DISABLED FOR SAFETY
+// This endpoint caused race conditions by overwriting the entire DB with potentially stale client data.
+// Modifications must be done via /api/action.
+/*
 app.post('/api/data', async (req, res) => {
   try {
     await withDb((data) => {
@@ -231,6 +230,7 @@ app.post('/api/data', async (req, res) => {
     res.status(500).send('Error saving data');
   }
 });
+*/
 
 // Catch-all route to serve the SPA
 app.get('*splat', function (req, res) {
