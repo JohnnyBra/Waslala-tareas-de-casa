@@ -64,14 +64,41 @@ let state: AppState = {
     rewards: []
 };
 
+const listeners: (() => void)[] = [];
+
 export const DataService = {
-  // Initialization: Load from server
+  // Subscription for reactive updates
+  subscribe: (listener: () => void) => {
+    listeners.push(listener);
+    return () => {
+      const index = listeners.indexOf(listener);
+      if (index > -1) listeners.splice(index, 1);
+    };
+  },
+
+  notifyListeners: () => {
+    listeners.forEach(l => l());
+  },
+
+  // Initialization: Load from server and start polling
   init: async () => {
+    await DataService.fetchData();
+
+    // Poll for changes every 2 seconds
+    setInterval(() => {
+        DataService.fetchData();
+    }, 2000);
+  },
+
+  fetchData: async () => {
     try {
         const response = await fetch(`${API_BASE}/data`);
         const serverData = await response.json();
 
         if (serverData && Object.keys(serverData).length > 0) {
+            // Update local state with server data
+            // We replace arrays but keep the reference to 'state' object same
+            // Ideally we should check for deep equality before notifying, but for now simple replacement is fine
             state.families = serverData.families || [];
             state.users = serverData.users || [];
             state.tasks = serverData.tasks || [];
@@ -81,28 +108,28 @@ export const DataService = {
             state.events = serverData.events || [];
             state.transactions = serverData.transactions || [];
             state.rewards = serverData.rewards || [];
+
+            DataService.notifyListeners();
         } else {
-            // Initialize with defaults if empty
-            if (state.families.length === 0) state.families = INITIAL_FAMILIES;
-            if (state.users.length === 0) state.users = INITIAL_USERS;
-            if (state.tasks.length === 0) state.tasks = INITIAL_TASKS;
-
-            // Note: We are not syncing initial mock data automatically to avoid overwriting invalid state.
-            // The server starts empty, so let's populate it properly via actions if needed, or let the user create data.
-            // But to preserve original behavior, we can do a one-time sync.
-            // However, with the new architecture, we should trust the server.
-            // If server is empty, let it be empty? Or push defaults?
-            // To be safe, if we are in "Init Mock" mode, let's push the initial families/users via actions.
-
-            // For now, let's just leave the local state populated so the UI works.
-            // Persistence of this initial data will happen when modifications occur.
+            // Initialize with defaults if empty (only on first load ideally, but kept here for safety)
+            // If server is truly empty, this might cause local state to flicker to defaults if we are not careful.
+            // However, typical flow is server has data or we init.
+            if (state.families.length === 0) {
+                 state.families = INITIAL_FAMILIES;
+                 state.users = INITIAL_USERS;
+                 state.tasks = INITIAL_TASKS;
+                 DataService.notifyListeners();
+            }
         }
     } catch (e) {
         console.error("Failed to load data from server", e);
-        // Fallback to initial data if server fails
-        if (state.families.length === 0) state.families = INITIAL_FAMILIES;
-        if (state.users.length === 0) state.users = INITIAL_USERS;
-        if (state.tasks.length === 0) state.tasks = INITIAL_TASKS;
+        // Fallback to initial data if server fails and we have nothing
+        if (state.families.length === 0) {
+             state.families = INITIAL_FAMILIES;
+             state.users = INITIAL_USERS;
+             state.tasks = INITIAL_TASKS;
+             DataService.notifyListeners();
+        }
     }
   },
 

@@ -7,7 +7,22 @@ import { DataService } from './services/dataService';
 import { FamilyProvider, useFamily } from './components/FamilyContext';
 import { LoginScreen } from './components/LoginScreen';
 
+// Hook to sync data updates
+export function useDataSync() {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = DataService.subscribe(() => {
+      setTick(t => t + 1);
+    });
+    return unsubscribe;
+  }, []);
+}
+
 const AppContent: React.FC = () => {
+  // Use the sync hook to force re-render on data changes
+  useDataSync();
+
   const { currentFamily, isLoading: familyLoading, logoutFamily } = useFamily();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
