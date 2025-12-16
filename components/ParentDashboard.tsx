@@ -299,6 +299,7 @@ const ParentDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
           style: newEventStyle,
           assignedTo: newEventAssignees,
           readBy: [],
+          completedBy: [],
           points: newEventPoints > 0 ? newEventPoints : undefined
       };
 

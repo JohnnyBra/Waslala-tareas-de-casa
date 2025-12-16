@@ -21,7 +21,7 @@ export const LoginScreen: React.FC = () => {
       e.preventDefault();
       // Hardcoded system admin pin for simplicity, or check against a special user?
       // Let's use a simple "admin" password for the "System Admin" role.
-      if (adminPin === 'admin123') {
+      if (adminPin === '2222') {
           setIsAuthenticatedAdmin(true);
       } else {
           alert('PIN Incorrecto');

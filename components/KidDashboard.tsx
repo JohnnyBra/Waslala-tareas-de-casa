@@ -132,15 +132,13 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
 
   const handleCloseEvent = () => {
       if (activeEvent) {
+          // Just mark as "Seen" (readBy) so popup doesn't show again
           DataService.markEventAsRead(activeEvent.id, currentUser.id);
 
-          // Award points if event has them
-          if (activeEvent.points && activeEvent.points > 0) {
-              DataService.addExtraPoints(currentUser.id, activeEvent.points, `Evento: ${activeEvent.title}`);
-              loadData();
-          }
+          // NOTE: Points are NO LONGER awarded here. They are awarded when completing the task in the list.
 
           setActiveEvent(null);
+          loadData();
           // Check for more events after a short delay
           setTimeout(checkEvents, 500);
       }
@@ -183,10 +181,18 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
   };
 
   const handleToggleEvent = (event: AppEvent) => {
-      const isRead = event.readBy.includes(currentUser.id);
-      if (isRead) return; // Already read/done
+      // Check completion status using the new completedBy field (or fallback logic)
+      const isCompleted = event.completedBy ? event.completedBy.includes(currentUser.id) : false;
 
-      DataService.markEventAsRead(event.id, currentUser.id);
+      if (isCompleted) return; // Already done
+
+      // Mark as completed
+      DataService.markEventCompleted(event.id, currentUser.id);
+
+      // Ensure it's marked as read too if not already (just in case)
+      if (!event.readBy.includes(currentUser.id)) {
+          DataService.markEventAsRead(event.id, currentUser.id);
+      }
 
       if (event.points && event.points > 0) {
           DataService.addExtraPoints(currentUser.id, event.points, `Evento: ${event.title}`);
@@ -617,7 +623,9 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
         <>
         {/* Render Events as Special Tasks */}
         {events.map(event => {
-            const isDone = event.readBy.includes(currentUser.id);
+            // Check IS DONE based on completedBy, NOT readBy
+            const isDone = event.completedBy ? event.completedBy.includes(currentUser.id) : false;
+
             const styleColor = event.style === 'golden' ? 'border-yellow-400 bg-yellow-50' : (event.style === 'sparkle' ? 'border-purple-400 bg-purple-50' : 'border-blue-200 bg-blue-50');
             const icon = event.style === 'golden' ? '🏆' : (event.style === 'sparkle' ? '✨' : '📅');
 
@@ -983,7 +991,7 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                       </p>
                       {activeEvent.points && (
                           <div className="mt-4 bg-brand-yellow/20 text-brand-dark px-4 py-2 rounded-xl font-bold inline-block">
-                              🎁 +{activeEvent.points} puntos extra
+                              🎁 +{activeEvent.points} puntos al completar
                           </div>
                       )}
                   </div>
@@ -997,6 +1005,9 @@ const KidDashboard: React.FC<Props> = ({ currentUser, onUserUpdate }) => {
                   >
                       ¡Entendido!
                   </button>
+                  <p className="mt-4 text-xs text-gray-400">
+                      * El evento se añadirá a tu lista de tareas. ¡Complétalo para ganar los puntos!
+                  </p>
               </div>
           </div>
       )}
