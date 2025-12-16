@@ -64,11 +64,6 @@ let state: AppState = {
     rewards: []
 };
 
-// Synchronization State
-let syncTimeout: any = null;
-let isSyncing = false;
-let pendingSync = false;
-
 export const DataService = {
   // Initialization: Load from server
   init: async () => {
@@ -92,8 +87,15 @@ export const DataService = {
             if (state.users.length === 0) state.users = INITIAL_USERS;
             if (state.tasks.length === 0) state.tasks = INITIAL_TASKS;
 
-            // Save initial data to server
-            DataService.syncToServer();
+            // Note: We are not syncing initial mock data automatically to avoid overwriting invalid state.
+            // The server starts empty, so let's populate it properly via actions if needed, or let the user create data.
+            // But to preserve original behavior, we can do a one-time sync.
+            // However, with the new architecture, we should trust the server.
+            // If server is empty, let it be empty? Or push defaults?
+            // To be safe, if we are in "Init Mock" mode, let's push the initial families/users via actions.
+
+            // For now, let's just leave the local state populated so the UI works.
+            // Persistence of this initial data will happen when modifications occur.
         }
     } catch (e) {
         console.error("Failed to load data from server", e);
@@ -104,43 +106,18 @@ export const DataService = {
     }
   },
 
-  // Public sync request (debounced)
-  syncToServer: () => {
-      if (syncTimeout) {
-          clearTimeout(syncTimeout);
-      }
-
-      // Debounce sync request
-      syncTimeout = setTimeout(() => {
-          DataService.processSync();
-      }, 500); // 0.5 seconds debounce
-  },
-
-  // Actual sync process
-  processSync: async () => {
-      if (isSyncing) {
-          pendingSync = true;
-          return;
-      }
-
-      isSyncing = true;
-
+  // Helper to send actions to server
+  sendAction: async (type: string, payload: any) => {
       try {
-          await fetch(`${API_BASE}/data`, {
+          await fetch(`${API_BASE}/action`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(state),
+              body: JSON.stringify({ type, payload }),
               keepalive: true
           });
-
       } catch (e) {
-          console.error("Failed to sync to server", e);
-      } finally {
-          isSyncing = false;
-          if (pendingSync) {
-              pendingSync = false;
-              DataService.syncToServer(); // Trigger another debounce cycle if changes happened during sync
-          }
+          console.error(`Failed to send action ${type}`, e);
+          // Potential retry logic could go here
       }
   },
 
@@ -177,18 +154,17 @@ export const DataService = {
           name
       };
       state.families.push(newFamily);
-      DataService.syncToServer();
+      DataService.sendAction('ADD_FAMILY', newFamily);
       return newFamily;
   },
 
   deleteFamily: (familyId: string) => {
       state.families = state.families.filter(f => f.id !== familyId);
-      // Clean up related data
       state.users = state.users.filter(u => u.familyId !== familyId);
       state.tasks = state.tasks.filter(t => t.familyId !== familyId);
       state.rewards = state.rewards.filter(r => r.familyId !== familyId);
-      // We could clean up completions, extra points, etc., based on user IDs, but minimal cleanup is fine for now
-      DataService.syncToServer();
+
+      DataService.sendAction('DELETE_FAMILY', familyId);
   },
 
   // Users
@@ -196,21 +172,20 @@ export const DataService = {
     return state.users;
   },
 
-  // Get users for a specific family
   getFamilyUsers: (familyId: string): User[] => {
       return state.users.filter(u => u.familyId === familyId);
   },
 
   createUser: (user: User) => {
       state.users.push(user);
-      DataService.syncToServer();
+      DataService.sendAction('CREATE_USER', user);
   },
 
   updateUser: (updatedUser: User) => {
     const index = state.users.findIndex(u => u.id === updatedUser.id);
     if (index !== -1) {
       state.users[index] = updatedUser;
-      DataService.syncToServer();
+      DataService.sendAction('UPDATE_USER', updatedUser);
     }
   },
 
@@ -230,12 +205,12 @@ export const DataService = {
     } else {
       state.tasks.push(task);
     }
-    DataService.syncToServer();
+    DataService.sendAction('SAVE_TASK', task);
   },
 
   deleteTask: (taskId: string) => {
     state.tasks = state.tasks.filter(t => t.id !== taskId);
-    DataService.syncToServer();
+    DataService.sendAction('DELETE_TASK', taskId);
   },
 
   // Completions
@@ -249,6 +224,7 @@ export const DataService = {
     if (existingIndex >= 0) {
       // Remove (Undo)
       state.completions.splice(existingIndex, 1);
+      DataService.sendAction('REMOVE_COMPLETION', { taskId, userId, date });
     } else {
       // Add
       const newCompletion: TaskCompletion = {
@@ -260,13 +236,13 @@ export const DataService = {
         approved: true
       };
       state.completions.push(newCompletion);
+      DataService.sendAction('ADD_COMPLETION', newCompletion);
     }
-    DataService.syncToServer();
   },
 
   removeCompletion: (taskId: string, userId: string, date: string) => {
     state.completions = state.completions.filter(c => !(c.taskId === taskId && c.userId === userId && c.date === date));
-    DataService.syncToServer();
+    DataService.sendAction('REMOVE_COMPLETION', { taskId, userId, date });
   },
 
   // Extra Points
@@ -283,7 +259,7 @@ export const DataService = {
       timestamp: Date.now()
     };
     state.extraPoints.push(newEntry);
-    DataService.syncToServer();
+    DataService.sendAction('ADD_EXTRA_POINTS', newEntry);
   },
 
   // Messages (Taunts)
@@ -302,14 +278,14 @@ export const DataService = {
           type
       };
       state.messages.push(newMsg);
-      DataService.syncToServer();
+      DataService.sendAction('SEND_MESSAGE', newMsg);
   },
 
   markMessageRead: (msgId: string) => {
       const msg = state.messages.find(m => m.id === msgId);
       if(msg) {
           msg.read = true;
-          DataService.syncToServer();
+          DataService.sendAction('MARK_MESSAGE_READ', msgId);
       }
   },
 
@@ -319,7 +295,6 @@ export const DataService = {
   },
 
   saveEvent: (event: Event) => {
-    // Ensure backwards compatibility or default values
     if (!event.completedBy) event.completedBy = [];
 
     const existingIndex = state.events.findIndex(e => e.id === event.id);
@@ -328,14 +303,14 @@ export const DataService = {
     } else {
       state.events.push(event);
     }
-    DataService.syncToServer();
+    DataService.sendAction('SAVE_EVENT', event);
   },
 
   markEventAsRead: (eventId: string, userId: string) => {
     const event = state.events.find(e => e.id === eventId);
     if(event && !event.readBy.includes(userId)) {
       event.readBy.push(userId);
-      DataService.syncToServer();
+      DataService.sendAction('MARK_EVENT_READ', { eventId, userId });
     }
   },
 
@@ -345,7 +320,7 @@ export const DataService = {
           if (!event.completedBy) event.completedBy = [];
           if (!event.completedBy.includes(userId)) {
               event.completedBy.push(userId);
-              DataService.syncToServer();
+              DataService.sendAction('MARK_EVENT_COMPLETED', { eventId, userId });
           }
       }
   },
@@ -366,12 +341,12 @@ export const DataService = {
     } else {
       state.rewards.push(reward);
     }
-    DataService.syncToServer();
+    DataService.sendAction('SAVE_REWARD', reward);
   },
 
   deleteReward: (rewardId: string) => {
     state.rewards = state.rewards.filter(r => r.id !== rewardId);
-    DataService.syncToServer();
+    DataService.sendAction('DELETE_REWARD', rewardId);
   },
 
   redeemReward: (userId: string, rewardId: string): boolean => {
@@ -385,23 +360,24 @@ export const DataService = {
     const rewardTransactions = state.transactions.filter(t => t.itemId === rewardId);
 
     if (reward.limitType === 'unique' && rewardTransactions.length > 0) {
-        return false; // Already bought by someone
+        return false;
     }
 
     if (reward.limitType === 'once_per_user') {
         const myPurchase = rewardTransactions.find(t => t.userId === userId);
-        if (myPurchase) return false; // Already bought by this user
+        if (myPurchase) return false;
     }
 
     // Add transaction
-    state.transactions.push({
+    const transaction: ShopTransaction = {
         id: Date.now().toString(),
         userId,
         itemId: rewardId,
         cost: reward.cost,
         timestamp: Date.now()
-    });
-    DataService.syncToServer();
+    };
+    state.transactions.push(transaction);
+    DataService.sendAction('ADD_TRANSACTION', transaction);
 
     return true;
   },
@@ -412,7 +388,6 @@ export const DataService = {
   },
 
   getFamilyTransactions: (familyId: string): ShopTransaction[] => {
-      // Fetch all transactions for a family to check global limits
       const users = DataService.getFamilyUsers(familyId);
       const userIds = users.map(u => u.id);
       return state.transactions.filter(t => userIds.includes(t.userId));
@@ -422,14 +397,16 @@ export const DataService = {
       const stats = DataService.getUserStats(userId);
       if (stats.spendablePoints < cost) return false;
 
-      // Add transaction
-      state.transactions.push({
+      const transaction: ShopTransaction = {
           id: Date.now().toString(),
           userId,
           itemId,
           cost,
           timestamp: Date.now()
-      });
+      };
+
+      // Add transaction
+      state.transactions.push(transaction);
 
       // Add to inventory
       const user = state.users.find(u => u.id === userId);
@@ -438,9 +415,9 @@ export const DataService = {
           if (!user.inventory.includes(itemId)) {
               user.inventory.push(itemId);
           }
-          DataService.updateUser(user);
-      } else {
-        DataService.syncToServer();
+          // Note: We don't call updateUser here because we're sending a specific purchase action
+          // that handles both transaction and inventory.
+          DataService.sendAction('PURCHASE_ITEM', { transaction, userId, itemId });
       }
       return true;
   },
@@ -449,6 +426,7 @@ export const DataService = {
       const user = state.users.find(u => u.id === userId);
       if (user) {
           user.avatarConfig = config;
+          // Reuse update user action
           DataService.updateUser(user);
       }
   },
@@ -519,10 +497,3 @@ export const DataService = {
     }).sort((a, b) => b.points - a.points);
   }
 };
-
-// Listen for window unload to attempt a final sync
-window.addEventListener('beforeunload', () => {
-    if (syncTimeout) {
-        DataService.processSync();
-    }
-});
