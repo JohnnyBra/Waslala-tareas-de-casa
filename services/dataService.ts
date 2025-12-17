@@ -1,3 +1,4 @@
+import { io, Socket } from 'socket.io-client';
 import { Family, User, Task, TaskCompletion, Role, Badge, ExtraPointEntry, Message, Event, ShopTransaction, AvatarConfig, Reward } from '../types';
 import { AVATAR_ITEMS, getItemById } from '../constants/avatarItems';
 
@@ -66,6 +67,8 @@ let state: AppState = {
 
 const listeners: (() => void)[] = [];
 
+let socket: Socket | null = null;
+
 export const DataService = {
   // Subscription for reactive updates
   subscribe: (listener: () => void) => {
@@ -84,10 +87,37 @@ export const DataService = {
   init: async () => {
     await DataService.fetchData();
 
-    // Poll for changes every 2 seconds
+    // Initialize Socket.io connection
+    if (!socket) {
+      socket = io(window.location.origin); // Connect to same origin
+
+      socket.on('server:data_updated', (data) => {
+        console.log('Received data update from server');
+        DataService.updateLocalState(data);
+      });
+    }
+
+    // Keep polling as backup (optional, can be removed if socket is reliable, but good for safety)
     setInterval(() => {
         DataService.fetchData();
-    }, 2000);
+    }, 5000); // Increased polling interval to 5s since we have sockets
+  },
+
+  updateLocalState: (serverData: any) => {
+      if (serverData && Object.keys(serverData).length > 0) {
+          // Update local state with server data
+          state.families = serverData.families || [];
+          state.users = serverData.users || [];
+          state.tasks = serverData.tasks || [];
+          state.completions = serverData.completions || [];
+          state.extraPoints = serverData.extraPoints || [];
+          state.messages = serverData.messages || [];
+          state.events = serverData.events || [];
+          state.transactions = serverData.transactions || [];
+          state.rewards = serverData.rewards || [];
+
+          DataService.notifyListeners();
+      }
   },
 
   fetchData: async () => {
@@ -96,20 +126,7 @@ export const DataService = {
         const serverData = await response.json();
 
         if (serverData && Object.keys(serverData).length > 0) {
-            // Update local state with server data
-            // We replace arrays but keep the reference to 'state' object same
-            // Ideally we should check for deep equality before notifying, but for now simple replacement is fine
-            state.families = serverData.families || [];
-            state.users = serverData.users || [];
-            state.tasks = serverData.tasks || [];
-            state.completions = serverData.completions || [];
-            state.extraPoints = serverData.extraPoints || [];
-            state.messages = serverData.messages || [];
-            state.events = serverData.events || [];
-            state.transactions = serverData.transactions || [];
-            state.rewards = serverData.rewards || [];
-
-            DataService.notifyListeners();
+            DataService.updateLocalState(serverData);
         } else {
             // Initialize with defaults if empty (only on first load ideally, but kept here for safety)
             // If server is truly empty, this might cause local state to flicker to defaults if we are not careful.
