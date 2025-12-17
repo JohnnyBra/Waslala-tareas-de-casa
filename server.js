@@ -1,4 +1,6 @@
 import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
@@ -10,6 +12,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*", // Allow any origin for simplicity, or restrict to frontend URL
+    methods: ["GET", "POST"]
+  }
+});
+
 const PORT = 3010;
 
 app.use(cors());
@@ -82,6 +92,10 @@ async function processSaveQueue() {
         const result = await operation(data); // data is mutable here
 
         await fsPromises.writeFile(DB_FILE, JSON.stringify(data, null, 2));
+
+        // Emit global update event
+        io.emit('server:data_updated', data);
+
         resolve(result);
     } catch (e) {
         console.error("DB Operation failed", e);
@@ -242,7 +256,7 @@ app.get('*splat', function (req, res) {
 });
 
 // IMPORTANT: Bind to '0.0.0.0' to listen on all network interfaces
-app.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SuperTareas Server running on port ${PORT}`);
   console.log(`👉 Access via LAN IP: http://<your-server-ip>:${PORT}`);
   console.log(`👉 Access via Localhost: http://localhost:${PORT}`);
